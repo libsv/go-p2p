@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"fmt"
+
 	"github.com/libsv/go-p2p/wire"
 )
 
@@ -12,14 +14,16 @@ var (
 	StatusRejected Status = 109
 )
 
+var (
+	ErrPeerNetworkMismatch = fmt.Errorf("peer network mismatch")
+)
+
 type PeerManagerI interface {
 	AnnounceTransaction(txID []byte, peers []PeerI) []PeerI
 	GetTransaction(txID []byte)
-	AddPeer(peerURL string, peerStore PeerHandlerI) error
+	AddPeer(peer PeerI) error
 	RemovePeer(peerURL string) error
 	GetPeers() []PeerI
-	PeerCreator(peerCreator func(peerAddress string, peerStore PeerHandlerI) (PeerI, error))
-	addPeer(peer PeerI) error
 }
 
 type PeerI interface {
@@ -27,6 +31,8 @@ type PeerI interface {
 	WriteMsg(msg wire.Message) error
 	String() string
 	AnnounceTransaction(txID []byte)
+	GetTransaction(txID []byte)
+	Network() wire.BitcoinNet
 }
 
 type PeerHandlerI interface {

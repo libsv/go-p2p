@@ -7,21 +7,24 @@ import (
 )
 
 type PeerMock struct {
-	mu            sync.Mutex
-	address       string
-	peerStore     PeerHandlerI
-	writeChan     chan wire.Message
-	messages      []wire.Message
-	announcements [][]byte
+	mu              sync.Mutex
+	address         string
+	peerHandler     PeerHandlerI
+	network         wire.BitcoinNet
+	writeChan       chan wire.Message
+	messages        []wire.Message
+	announcements   [][]byte
+	getTransactions [][]byte
 }
 
-func NewPeerMock(address string, peerStore PeerHandlerI) (*PeerMock, error) {
+func NewPeerMock(address string, peerHandler PeerHandlerI, network wire.BitcoinNet) (*PeerMock, error) {
 	writeChan := make(chan wire.Message)
 
 	p := &PeerMock{
-		peerStore: peerStore,
-		address:   address,
-		writeChan: writeChan,
+		peerHandler: peerHandler,
+		address:     address,
+		network:     network,
+		writeChan:   writeChan,
 	}
 
 	go func() {
@@ -31,6 +34,10 @@ func NewPeerMock(address string, peerStore PeerHandlerI) (*PeerMock, error) {
 	}()
 
 	return p, nil
+}
+
+func (p *PeerMock) Network() wire.BitcoinNet {
+	return p.network
 }
 
 func (p *PeerMock) Connected() bool {
@@ -51,11 +58,25 @@ func (p *PeerMock) AnnounceTransaction(txID []byte) {
 	p.announcements = append(p.announcements, txID)
 }
 
-func (p *PeerMock) getAnnouncements() [][]byte {
+func (p *PeerMock) GetAnnouncements() [][]byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.announcements
+}
+
+func (p *PeerMock) GetTransaction(txID []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.getTransactions = append(p.getTransactions, txID)
+}
+
+func (p *PeerMock) GetGetTransactions() [][]byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.getTransactions
 }
 
 func (p *PeerMock) message(msg wire.Message) {

@@ -3,6 +3,7 @@ package p2p
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -24,6 +25,20 @@ func TestLittleEndian(t *testing.T) {
 func Test_connect(t *testing.T) {
 	t.Run("connect", func(t *testing.T) {
 		_, p, _ := newTestPeer(t)
+		assert.True(t, p.Connected())
+	})
+}
+
+func Test_incomingConnection(t *testing.T) {
+	t.Run("incoming", func(t *testing.T) {
+		peerConn, p, _ := newIncomingTestPeer(t)
+
+		doHandshake(t, p, peerConn)
+
+		// we need to wait for at least 10 milliseconds for the veracks to finish
+		time.Sleep(20 * time.Millisecond)
+
+		// we should be connected, even if we have not sent a version message
 		assert.True(t, p.Connected())
 	})
 }
@@ -175,7 +190,8 @@ func Test_readHandler(t *testing.T) {
 	})
 
 	t.Run("read message - block", func(t *testing.T) {
-		myConn, _, peerHandler := newTestPeer(t)
+		myConn, peer, peerHandler := newTestPeer(t)
+		fmt.Sprintf("%v", peer)
 
 		msg := wire.NewMsgBlock(&wire.BlockHeader{
 			Version:    1,
@@ -255,6 +271,21 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+
+	return myConn, p, peerHandler
+}
+
+func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
+	peerConn, myConn := connutil.AsyncPipe()
+	peerHandler := NewMockPeerHandler()
+	p, err := NewPeer(
+		&TestLogger{},
+		"localhost:68333",
+		peerHandler,
+		wire.MainNet,
+		WithIncomingConnection(peerConn),
+	)
+	require.NoError(t, err)
 
 	return myConn, p, peerHandler
 }

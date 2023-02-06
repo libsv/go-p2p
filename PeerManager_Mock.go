@@ -37,13 +37,9 @@ func (p *PeerManagerMock) PeerCreator(peerCreator func(peerAddress string, peerH
 	p.peerCreator = peerCreator
 }
 
-func (p *PeerManagerMock) AddPeer(peerURL string, peerHandler PeerHandlerI) error {
-	peer, err := NewPeerMock(peerURL, peerHandler)
-	if err != nil {
-		return err
-	}
-
-	return p.addPeer(peer)
+func (p *PeerManagerMock) AddPeer(peer PeerI) error {
+	p.Peers[peer.String()] = peer
+	return nil
 }
 
 func (p *PeerManagerMock) RemovePeer(peerURL string) error {
@@ -57,9 +53,4 @@ func (p *PeerManagerMock) GetPeers() []PeerI {
 		peers = append(peers, peer)
 	}
 	return peers
-}
-
-func (p *PeerManagerMock) addPeer(peer PeerI) error {
-	p.Peers[peer.String()] = peer
-	return nil
 }

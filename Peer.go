@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -23,11 +22,6 @@ import (
 	"github.com/ordishs/gocore"
 )
 
-func init() {
-	// override the default wire block handler with our own that streams and stores only the transaction ids
-	setPeerBlockHandler()
-}
-
 var (
 	pingInterval = 2 * time.Minute
 )
@@ -47,6 +41,7 @@ type Peer struct {
 	mu             sync.RWMutex
 	readConn       net.Conn
 	writeConn      net.Conn
+	incomingConn   net.Conn
 	dial           func(network, address string) (net.Conn, error)
 	peerHandler    PeerHandlerI
 	writeChan      chan wire.Message
@@ -56,20 +51,7 @@ type Peer struct {
 	receivedVerAck atomic.Bool
 	batchDelay     time.Duration
 	invBatcher     *batcher.Batcher[[]byte]
-}
-
-type PeerOptions func(p *Peer)
-
-func WithDialer(dial func(network, address string) (net.Conn, error)) PeerOptions {
-	return func(p *Peer) {
-		p.dial = dial
-	}
-}
-
-func WithBatchDelay(batchDelay time.Duration) PeerOptions {
-	return func(p *Peer) {
-		p.batchDelay = batchDelay
-	}
+	dataBatcher    *batcher.Batcher[[]byte]
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -92,24 +74,35 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	go p.pingHandler()
 	go p.writeChannelHandler()
 
-	// reconnect if disconnected
-	go func() {
-		for {
-			if !p.Connected() {
-				err := p.connect()
-				if err != nil {
-					logger.Warnf("Failed to connect to peer %s: %v", address, err)
-				}
+	if p.incomingConn != nil {
+		p.logger.Infof("[%s] Incoming connection from peer on %s", p.address, p.network)
+		go func() {
+			err := p.connect()
+			if err != nil {
+				logger.Warnf("Failed to connect to peer %s: %v", address, err)
 			}
-			time.Sleep(10 * time.Second)
-		}
-	}()
+		}()
+	} else {
+		// reconnect if disconnected, but only on outgoing connections
+		go func() {
+			for {
+				if !p.Connected() {
+					err := p.connect()
+					if err != nil {
+						logger.Warnf("Failed to connect to peer %s: %v", address, err)
+					}
+				}
+				time.Sleep(10 * time.Second)
+			}
+		}()
+	}
 
 	if p.batchDelay == 0 {
 		batchDelayMillis, _ := gocore.Config().GetInt("peerManager_batchDelay_millis", 10)
 		p.batchDelay = time.Duration(batchDelayMillis) * time.Millisecond
 	}
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
+	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
 
 	return p, nil
 }
@@ -131,25 +124,29 @@ func (p *Peer) disconnect() {
 func (p *Peer) connect() error {
 	p.mu.Lock()
 
-	if p.readConn != nil || p.writeConn != nil {
-		p.disconnect()
+	if p.incomingConn == nil {
+		if p.readConn != nil || p.writeConn != nil {
+			p.disconnect()
+		}
+		p.readConn = nil
 	}
 
-	p.readConn = nil
 	p.sentVerAck.Store(false)
 	p.receivedVerAck.Store(false)
 
-	p.mu.Unlock()
+	if p.incomingConn != nil {
+		p.readConn = p.incomingConn
+	} else {
+		p.logger.Infof("[%s] Connecting to peer on %s", p.address, p.network)
+		conn, err := p.dial("tcp", p.address)
+		if err != nil {
+			return fmt.Errorf("could not dial node [%s]: %v", p.address, err)
+		}
 
-	p.logger.Infof("[%s] Connecting to peer on %s", p.address, p.network)
-	conn, err := p.dial("tcp", p.address)
-	if err != nil {
-		return fmt.Errorf("could not dial node [%s]: %v", p.address, err)
+		// open the read connection, so we can receive messages
+		p.readConn = conn
 	}
 
-	// open the read connection, so we can receive messages
-	p.mu.Lock()
-	p.readConn = conn
 	p.mu.Unlock()
 
 	go p.readHandler()
@@ -158,7 +155,9 @@ func (p *Peer) connect() error {
 	// write channel is not ready to send message until the VERACK handshake is done
 	msg := p.versionMessage(p.address)
 
-	if err = wire.WriteMessage(conn, msg, wire.ProtocolVersion, p.network); err != nil {
+	// here we can write to the readConn, since we are in the process of connecting and this is the
+	// only one that is already open. Opening the writeConn signals that we are done with the handshake
+	if err := wire.WriteMessage(p.readConn, msg, wire.ProtocolVersion, p.network); err != nil {
 		return fmt.Errorf("failed to write message: %v", err)
 	}
 	p.logger.Debugf("[%s] Sent %s", p.address, strings.ToUpper(msg.Command()))
@@ -167,15 +166,19 @@ func (p *Peer) connect() error {
 		if p.receivedVerAck.Load() && p.sentVerAck.Load() {
 			break
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	// set the connection which allows us to send messages
 	p.mu.Lock()
-	p.writeConn = conn
+	p.writeConn = p.readConn
 	p.mu.Unlock()
 
 	return nil
+}
+
+func (p *Peer) Network() wire.BitcoinNet {
+	return p.network
 }
 
 func (p *Peer) Connected() bool {
@@ -348,6 +351,10 @@ func (p *Peer) AnnounceTransaction(txid []byte) {
 	p.invBatcher.Put(&txid)
 }
 
+func (p *Peer) GetTransaction(txID []byte) {
+	p.dataBatcher.Put(&txID)
+}
+
 func (p *Peer) sendInvBatch(batch []*[]byte) {
 	invMsg := wire.NewMsgInvSizeHint(uint(len(batch)))
 
@@ -367,6 +374,27 @@ func (p *Peer) sendInvBatch(batch []*[]byte) {
 	p.logger.Infof("[%s] Sent INV (%d items)", p.String(), len(batch))
 	for _, txid := range batch {
 		p.logger.Debugf("        %x", bt.ReverseBytes(*txid))
+	}
+}
+
+func (p *Peer) sendDataBatch(batch []*[]byte) {
+	dataMsg := wire.NewMsgGetData()
+
+	for _, txid := range batch {
+		hash, err := chainhash.NewHash(*txid)
+		if err != nil {
+			p.logger.Infof("ERROR getting tx [%x]: %v", txid, err)
+			continue
+		}
+
+		iv := wire.NewInvVect(wire.InvTypeTx, hash)
+		_ = dataMsg.AddInvVect(iv)
+	}
+
+	if err := p.WriteMsg(dataMsg); err != nil {
+		p.logger.Infof("[%s] ERROR sending data message: %v", p.String(), err)
+	} else {
+		p.logger.Infof("[%s] Sent GETDATA (%d items)", p.String(), len(batch))
 	}
 }
 
@@ -461,24 +489,4 @@ out:
 			break out
 		}
 	}
-}
-
-func extractHeightFromCoinbaseTx(tx *bt.Tx) uint64 {
-	// Coinbase tx has a special format, the height is encoded in the first 4 bytes of the scriptSig
-	// https://en.bitcoin.it/wiki/Protocol_documentation#tx
-	// Get the length
-	script := *(tx.Inputs[0].UnlockingScript)
-	length := int(script[0])
-
-	if len(script) < length+1 {
-		return 0
-	}
-
-	b := make([]byte, 8)
-
-	for i := 0; i < length; i++ {
-		b[i] = script[i+1]
-	}
-
-	return binary.LittleEndian.Uint64(b)
 }
