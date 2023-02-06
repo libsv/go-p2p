@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"encoding/binary"
 	"io"
 
 	"github.com/libsv/go-bt/v2"
@@ -46,4 +47,24 @@ func setPeerBlockHandler() {
 
 		return bytesRead, blockMessage, nil, nil
 	})
+}
+
+func extractHeightFromCoinbaseTx(tx *bt.Tx) uint64 {
+	// Coinbase tx has a special format, the height is encoded in the first 4 bytes of the scriptSig
+	// https://en.bitcoin.it/wiki/Protocol_documentation#tx
+	// Get the length
+	script := *(tx.Inputs[0].UnlockingScript)
+	length := int(script[0])
+
+	if len(script) < length+1 {
+		return 0
+	}
+
+	b := make([]byte, 8)
+
+	for i := 0; i < length; i++ {
+		b[i] = script[i+1]
+	}
+
+	return binary.LittleEndian.Uint64(b)
 }

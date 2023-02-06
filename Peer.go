@@ -22,6 +22,11 @@ import (
 	"github.com/ordishs/gocore"
 )
 
+func init() {
+	// override the default wire block handler with our own that streams and stores only the transaction ids
+	setPeerBlockHandler()
+}
+
 var (
 	pingInterval = 2 * time.Minute
 )
