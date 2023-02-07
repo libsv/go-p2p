@@ -216,7 +216,7 @@ func (p *Peer) readHandler() {
 			msg, b, err := wire.ReadMessage(readConn, wire.ProtocolVersion, p.network)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					p.logger.Errorf(fmt.Sprintf("READ EOF whilst reading from %s [%d bytes]\n%s", p.address, len(b), string(b)))
+					p.logger.Errorf(fmt.Sprintf("READ EOF whilst reading from %s [%d bytes], are you on the right network?\n%s", p.address, len(b), string(b)))
 					p.disconnect()
 					break
 				}
