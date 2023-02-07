@@ -20,7 +20,7 @@ func main() {
 
 	peerManager := p2p.NewPeerManager(logger, network)
 
-	peerHandler := SimplePeerHandler{
+	peerHandler := &SimplePeerHandler{
 		logger: logger,
 	}
 
