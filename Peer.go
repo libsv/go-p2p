@@ -77,7 +77,7 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	}
 
 	go p.pingHandler()
-	go p.writeChannelHandler()
+		go p.writeChannelHandler()
 
 	if p.incomingConn != nil {
 		p.logger.Infof("[%s] Incoming connection from peer on %s", p.address, p.network)
@@ -194,12 +194,8 @@ func (p *Peer) Connected() bool {
 }
 
 func (p *Peer) WriteMsg(msg wire.Message) error {
-	select {
-	case p.writeChan <- msg:
-		return nil
-	default:
-		return errors.New("write channel is closed")
-	}
+	utils.SafeSend(p.writeChan, msg)
+	return nil
 }
 
 func (p *Peer) String() string {
