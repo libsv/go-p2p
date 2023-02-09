@@ -19,8 +19,10 @@ var (
 )
 
 type PeerManagerI interface {
-	AnnounceTransaction(txID []byte, peers []PeerI) []PeerI
-	GetTransaction(txID []byte) PeerI
+	AnnounceTransaction(txHash []byte, peers []PeerI) []PeerI
+	RequestTransaction(txHash []byte) PeerI
+	AnnounceBlock(blockHash []byte, peers []PeerI) []PeerI
+	RequestBlock(blockHash []byte) PeerI
 	AddPeer(peer PeerI) error
 	RemovePeer(peerURL string) error
 	GetPeers() []PeerI
@@ -30,8 +32,10 @@ type PeerI interface {
 	Connected() bool
 	WriteMsg(msg wire.Message) error
 	String() string
-	AnnounceTransaction(txID []byte)
-	GetTransaction(txID []byte)
+	AnnounceTransaction(txHash []byte)
+	RequestTransaction(txHash []byte)
+	AnnounceBlock(blockHash []byte)
+	RequestBlock(blockHash []byte)
 	Network() wire.BitcoinNet
 }
 

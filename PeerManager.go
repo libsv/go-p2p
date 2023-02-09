@@ -81,19 +81,19 @@ func (pm *PeerManager) GetPeers() []PeerI {
 
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil
 // it will return the peers that the transaction was actually announced to
-func (pm *PeerManager) AnnounceTransaction(txID []byte, peers []PeerI) []PeerI {
+func (pm *PeerManager) AnnounceTransaction(txHash []byte, peers []PeerI) []PeerI {
 	if len(peers) == 0 {
 		peers = pm.GetAnnouncedPeers()
 	}
 
 	for _, peer := range peers {
-		peer.AnnounceTransaction(txID)
+		peer.AnnounceTransaction(txHash)
 	}
 
 	return peers
 }
 
-func (pm *PeerManager) GetTransaction(txID []byte) PeerI {
+func (pm *PeerManager) RequestTransaction(txHash []byte) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {
@@ -108,7 +108,39 @@ func (pm *PeerManager) GetTransaction(txID []byte) PeerI {
 		return nil
 	}
 
-	sendToPeer.GetTransaction(txID)
+	sendToPeer.RequestTransaction(txHash)
+
+	return sendToPeer
+}
+
+func (pm *PeerManager) AnnounceBlock(blockHash []byte, peers []PeerI) []PeerI {
+	if len(peers) == 0 {
+		peers = pm.GetAnnouncedPeers()
+	}
+
+	for _, peer := range peers {
+		peer.AnnounceBlock(blockHash)
+	}
+
+	return peers
+}
+
+func (pm *PeerManager) RequestBlock(blockHash []byte) PeerI {
+	// send to the first found peer that is connected
+	var sendToPeer PeerI
+	for _, peer := range pm.GetAnnouncedPeers() {
+		if peer.Connected() {
+			sendToPeer = peer
+			break
+		}
+	}
+
+	// we don't have any connected peers
+	if sendToPeer == nil {
+		return nil
+	}
+
+	sendToPeer.RequestBlock(blockHash)
 
 	return sendToPeer
 }

@@ -7,14 +7,16 @@ import (
 )
 
 type PeerMock struct {
-	mu              sync.Mutex
-	address         string
-	peerHandler     PeerHandlerI
-	network         wire.BitcoinNet
-	writeChan       chan wire.Message
-	messages        []wire.Message
-	announcements   [][]byte
-	getTransactions [][]byte
+	mu                  sync.Mutex
+	address             string
+	peerHandler         PeerHandlerI
+	network             wire.BitcoinNet
+	writeChan           chan wire.Message
+	messages            []wire.Message
+	announcements       [][]byte
+	requestTransactions [][]byte
+	announceBlocks      [][]byte
+	requestBlocks       [][]byte
 }
 
 func NewPeerMock(address string, peerHandler PeerHandlerI, network wire.BitcoinNet) (*PeerMock, error) {
@@ -51,11 +53,11 @@ func (p *PeerMock) Len() int {
 	return len(p.messages)
 }
 
-func (p *PeerMock) AnnounceTransaction(txID []byte) {
+func (p *PeerMock) AnnounceTransaction(txHash []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.announcements = append(p.announcements, txID)
+	p.announcements = append(p.announcements, txHash)
 }
 
 func (p *PeerMock) GetAnnouncements() [][]byte {
@@ -65,18 +67,46 @@ func (p *PeerMock) GetAnnouncements() [][]byte {
 	return p.announcements
 }
 
-func (p *PeerMock) GetTransaction(txID []byte) {
+func (p *PeerMock) RequestTransaction(txHash []byte) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.getTransactions = append(p.getTransactions, txID)
+	p.requestTransactions = append(p.requestTransactions, txHash)
 }
 
-func (p *PeerMock) GetGetTransactions() [][]byte {
+func (p *PeerMock) GetRequestTransactions() [][]byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	return p.getTransactions
+	return p.requestTransactions
+}
+
+func (p *PeerMock) AnnounceBlock(blockHash []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.announceBlocks = append(p.announceBlocks, blockHash)
+}
+
+func (p *PeerMock) GetAnnounceBlocks() [][]byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.announceBlocks
+}
+
+func (p *PeerMock) RequestBlock(blockHash []byte) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.requestBlocks = append(p.requestBlocks, blockHash)
+}
+
+func (p *PeerMock) GetRequestBlocks() [][]byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.requestBlocks
 }
 
 func (p *PeerMock) message(msg wire.Message) {

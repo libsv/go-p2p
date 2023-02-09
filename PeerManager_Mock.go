@@ -24,7 +24,7 @@ func NewPeerManagerMock() *PeerManagerMock {
 	}
 }
 
-func (p *PeerManagerMock) GetTransaction(txID []byte) PeerI {
+func (p *PeerManagerMock) RequestTransaction(txID []byte) PeerI {
 	p.GetData = append(p.GetData, txID)
 	return nil
 }

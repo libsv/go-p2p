@@ -352,8 +352,52 @@ func (p *Peer) AnnounceTransaction(txid []byte) {
 	p.invBatcher.Put(&txid)
 }
 
-func (p *Peer) GetTransaction(txID []byte) {
+func (p *Peer) RequestTransaction(txID []byte) {
 	p.dataBatcher.Put(&txID)
+}
+
+func (p *Peer) AnnounceBlock(blockHash []byte) {
+	invMsg := wire.NewMsgInv()
+
+	hash, err := chainhash.NewHash(blockHash)
+	if err != nil {
+		p.logger.Infof("ERROR announcing new tx [%s]: %v", hash.String(), err)
+		return
+	}
+
+	iv := wire.NewInvVect(wire.InvTypeBlock, hash)
+	if err = invMsg.AddInvVect(iv); err != nil {
+		p.logger.Infof("ERROR adding invVect to INV message: %v", err)
+		return
+	}
+
+	if err = p.WriteMsg(invMsg); err != nil {
+		p.logger.Infof("[%s] ERROR sending INV for block: %v", p.String(), err)
+	} else {
+		p.logger.Infof("[%s] Sent INV for block %s", p.String(), hash.String())
+	}
+}
+
+func (p *Peer) RequestBlock(blockHash []byte) {
+	dataMsg := wire.NewMsgGetData()
+
+	hash, err := chainhash.NewHash(blockHash)
+	if err != nil {
+		p.logger.Infof("ERROR getting tx [%s]: %v", hash.String(), err)
+		return
+	}
+
+	iv := wire.NewInvVect(wire.InvTypeTx, hash)
+	if err = dataMsg.AddInvVect(iv); err != nil {
+		p.logger.Infof("ERROR adding invVect to GETDATA message: %v", err)
+		return
+	}
+
+	if err := p.WriteMsg(dataMsg); err != nil {
+		p.logger.Infof("[%s] ERROR sending block data message: %v", p.String(), err)
+	} else {
+		p.logger.Infof("[%s] Sent GETDATA for block %s", p.String(), hash.String())
+	}
 }
 
 func (p *Peer) sendInvBatch(batch []*[]byte) {
@@ -393,7 +437,7 @@ func (p *Peer) sendDataBatch(batch []*[]byte) {
 	}
 
 	if err := p.WriteMsg(dataMsg); err != nil {
-		p.logger.Infof("[%s] ERROR sending data message: %v", p.String(), err)
+		p.logger.Infof("[%s] ERROR sending tx data message: %v", p.String(), err)
 	} else {
 		p.logger.Infof("[%s] Sent GETDATA (%d items)", p.String(), len(batch))
 	}
