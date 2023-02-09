@@ -93,7 +93,7 @@ func (pm *PeerManager) AnnounceTransaction(txID []byte, peers []PeerI) []PeerI {
 	return peers
 }
 
-func (pm *PeerManager) GetTransaction(txID []byte) {
+func (pm *PeerManager) GetTransaction(txID []byte) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {
@@ -103,7 +103,14 @@ func (pm *PeerManager) GetTransaction(txID []byte) {
 		}
 	}
 
+	// we don't have any connected peers
+	if sendToPeer == nil {
+		return nil
+	}
+
 	sendToPeer.GetTransaction(txID)
+
+	return sendToPeer
 }
 
 func (pm *PeerManager) GetAnnouncedPeers() []PeerI {

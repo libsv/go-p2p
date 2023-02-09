@@ -20,7 +20,7 @@ var (
 
 type PeerManagerI interface {
 	AnnounceTransaction(txID []byte, peers []PeerI) []PeerI
-	GetTransaction(txID []byte)
+	GetTransaction(txID []byte) PeerI
 	AddPeer(peer PeerI) error
 	RemovePeer(peerURL string) error
 	GetPeers() []PeerI
