@@ -12,10 +12,12 @@ func (l TestLogger) Errorf(format string, args ...interface{}) {}
 func (l TestLogger) Fatalf(format string, args ...interface{}) {}
 
 type PeerManagerMock struct {
-	Peers       map[string]PeerI
-	Announced   [][]byte
-	GetData     [][]byte
-	peerCreator func(peerAddress string, peerHandler PeerHandlerI) (PeerI, error)
+	Peers                 map[string]PeerI
+	AnnouncedTransactions [][]byte
+	RequestTransactions   [][]byte
+	AnnouncedBlocks       [][]byte
+	RequestBlocks         [][]byte
+	peerCreator           func(peerAddress string, peerHandler PeerHandlerI) (PeerI, error)
 }
 
 func NewPeerManagerMock() *PeerManagerMock {
@@ -25,12 +27,22 @@ func NewPeerManagerMock() *PeerManagerMock {
 }
 
 func (p *PeerManagerMock) RequestTransaction(txID []byte) PeerI {
-	p.GetData = append(p.GetData, txID)
+	p.RequestTransactions = append(p.RequestTransactions, txID)
 	return nil
 }
 
-func (p *PeerManagerMock) AnnounceTransaction(txID []byte, peers []PeerI) []PeerI {
-	p.Announced = append(p.Announced, txID)
+func (p *PeerManagerMock) AnnounceTransaction(txID []byte, _ []PeerI) []PeerI {
+	p.AnnouncedTransactions = append(p.AnnouncedTransactions, txID)
+	return nil
+}
+
+func (p *PeerManagerMock) AnnounceBlock(blockHash []byte, _ []PeerI) []PeerI {
+	p.AnnouncedBlocks = append(p.AnnouncedBlocks, blockHash)
+	return nil
+}
+
+func (p *PeerManagerMock) RequestBlock(blockHash []byte) PeerI {
+	p.RequestBlocks = append(p.RequestBlocks, blockHash)
 	return nil
 }
 
