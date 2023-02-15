@@ -89,15 +89,20 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 		}()
 	} else {
 		// reconnect if disconnected, but only on outgoing connections
+		err := p.connect()
+		if err != nil {
+			logger.Warnf("Failed to connect to peer %s: %v", address, err)
+		}
+
 		go func() {
-			for {
-				if !p.Connected() {
-					err := p.connect()
+			for range time.NewTicker(10 * time.Second).C {
+				// logger.Debugf("checking connection to peer %s, connected = %t, connecting = %t", address, p.Connected(), p.Connecting())
+				if !p.Connected() && !p.Connecting() {
+					err = p.connect()
 					if err != nil {
 						logger.Warnf("Failed to connect to peer %s: %v", address, err)
 					}
 				}
-				time.Sleep(10 * time.Second)
 			}
 		}()
 	}
@@ -116,6 +121,10 @@ func (p *Peer) disconnect() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p._disconnect()
+}
+
+func (p *Peer) _disconnect() {
 	if p.readConn != nil {
 		_ = p.readConn.Close()
 	}
@@ -128,10 +137,11 @@ func (p *Peer) disconnect() {
 
 func (p *Peer) connect() error {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	if p.incomingConn == nil {
 		if p.readConn != nil || p.writeConn != nil {
-			p.disconnect()
+			p._disconnect()
 		}
 		p.readConn = nil
 	}
@@ -152,8 +162,6 @@ func (p *Peer) connect() error {
 		p.readConn = conn
 	}
 
-	p.mu.Unlock()
-
 	go p.readHandler()
 
 	// write version message to our peer directly and not through the write channel,
@@ -167,17 +175,22 @@ func (p *Peer) connect() error {
 	}
 	p.logger.Debugf("[%s] Sent %s", p.address, strings.ToUpper(msg.Command()))
 
+	startWaitTime := time.Now()
 	for {
 		if p.receivedVerAck.Load() && p.sentVerAck.Load() {
 			break
+		}
+		// wait for maximum 30 seconds
+		if time.Since(startWaitTime) > 30*time.Second {
+			return fmt.Errorf("timeout waiting for VERACK")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	// set the connection which allows us to send messages
-	p.mu.Lock()
 	p.writeConn = p.readConn
-	p.mu.Unlock()
+
+	p.logger.Infof("[%s] Connected to peer on %s", p.address, p.network)
 
 	return nil
 }
@@ -193,6 +206,13 @@ func (p *Peer) Connected() bool {
 	return p.readConn != nil && p.writeConn != nil
 }
 
+func (p *Peer) Connecting() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	return p.readConn != nil && p.writeConn == nil
+}
+
 func (p *Peer) WriteMsg(msg wire.Message) error {
 	utils.SafeSend(p.writeChan, msg)
 	return nil
@@ -203,9 +223,7 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) readHandler() {
-	p.mu.RLock()
 	readConn := p.readConn
-	p.mu.RUnlock()
 
 	if readConn != nil {
 		for {
