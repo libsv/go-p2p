@@ -61,7 +61,7 @@ type Peer struct {
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
 func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, network wire.BitcoinNet, options ...PeerOptions) (*Peer, error) {
-	writeChan := make(chan wire.Message, 100)
+	writeChan := make(chan wire.Message, 1000)
 
 	p := &Peer{
 		network:     network,
@@ -77,7 +77,12 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	}
 
 	go p.pingHandler()
+	for i := 0; i < 10; i++ {
+		// start 10 workers that will write to the peer
+		// locking is done in the net.write in the wire/message handler
+		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
 		go p.writeChannelHandler()
+	}
 
 	if p.incomingConn != nil {
 		p.logger.Infof("[%s] Incoming connection from peer on %s", p.address, p.network)

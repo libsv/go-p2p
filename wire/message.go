@@ -355,18 +355,16 @@ func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 	// rather than directly to the writer since writeElements doesn't
 	// return the number of bytes written.
 	hw := bytes.NewBuffer(make([]byte, 0, MessageHeaderSize))
-	writeElements(hw, hdr.magic, command, hdr.length, hdr.checksum)
-
-	// Write header.
-	n, err := w.Write(hw.Bytes())
-	totalBytes += n
-	if err != nil {
+	if err = writeElements(hw, hdr.magic, command, hdr.length, hdr.checksum); err != nil {
 		return totalBytes, err
 	}
 
-	// Write payload.
-	n, err = w.Write(payload)
+	// Write header and payload in 1 go.
+	// This w.Write() is locking, so we don't have to worry about concurrent writes.
+	var n int
+	n, err = w.Write(append(hw.Bytes(), payload...))
 	totalBytes += n
+
 	return totalBytes, err
 }
 
