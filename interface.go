@@ -7,14 +7,6 @@ import (
 	"github.com/libsv/go-p2p/wire"
 )
 
-type Status int32
-
-var (
-	StatusSent     Status = 5
-	StatusSeen     Status = 6
-	StatusRejected Status = 109
-)
-
 var (
 	ErrPeerNetworkMismatch = fmt.Errorf("peer network mismatch")
 )

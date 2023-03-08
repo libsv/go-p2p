@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -60,7 +61,7 @@ type Peer struct {
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
 func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, network wire.BitcoinNet, options ...PeerOptions) (*Peer, error) {
-	writeChan := make(chan wire.Message, 1000)
+	writeChan := make(chan wire.Message, 10000)
 
 	p := &Peer{
 		network:     network,
@@ -112,7 +113,7 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	}
 
 	if p.batchDelay == 0 {
-		batchDelayMillis, _ := gocore.Config().GetInt("peerManager_batchDelay_millis", 10)
+		batchDelayMillis, _ := gocore.Config().GetInt("peerManager_batchDelay_millis", 100)
 		p.batchDelay = time.Duration(batchDelayMillis) * time.Millisecond
 	}
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
@@ -230,8 +231,9 @@ func (p *Peer) readHandler() {
 	readConn := p.readConn
 
 	if readConn != nil {
+		reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: 32 * 1024 * 1024})
 		for {
-			msg, b, err := wire.ReadMessage(readConn, wire.ProtocolVersion, p.network)
+			msg, b, err := wire.ReadMessage(reader, wire.ProtocolVersion, p.network)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					p.logger.Errorf(fmt.Sprintf("READ EOF whilst reading from %s [%d bytes], are you on the right network?\n%s", p.address, len(b), string(b)))
@@ -462,24 +464,26 @@ func (p *Peer) writeChannelHandler() {
 			p.logger.Errorf("[%s] Failed to write message: %v", p.address, err)
 		}
 
-		if msg.Command() == wire.CmdTx {
-			hash := msg.(*wire.MsgTx).TxHash()
-			if err := p.peerHandler.HandleTransactionSent(msg.(*wire.MsgTx), p); err != nil {
-				p.logger.Errorf("[%s] Unable to process tx %s: %v", p.address, hash.String(), err)
+		go func(msg wire.Message) {
+			if msg.Command() == wire.CmdTx {
+				hash := msg.(*wire.MsgTx).TxHash()
+				if err := p.peerHandler.HandleTransactionSent(msg.(*wire.MsgTx), p); err != nil {
+					p.logger.Errorf("[%s] Unable to process tx %s: %v", p.address, hash.String(), err)
+				}
 			}
-		}
 
-		switch m := msg.(type) {
-		case *wire.MsgTx:
-			p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.TxHash().String())
-		case *wire.MsgBlock:
-			p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.BlockHash().String())
-		case *wire.MsgGetData:
-			p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.InvList[0].Hash.String())
-		case *wire.MsgInv:
-		default:
-			p.logger.Debugf("[%s] Sent %s", p.address, strings.ToUpper(msg.Command()))
-		}
+			switch m := msg.(type) {
+			case *wire.MsgTx:
+				p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.TxHash().String())
+			case *wire.MsgBlock:
+				p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.BlockHash().String())
+			case *wire.MsgGetData:
+				p.logger.Debugf("[%s] Sent %s: %s", p.address, strings.ToUpper(msg.Command()), m.InvList[0].Hash.String())
+			case *wire.MsgInv:
+			default:
+				p.logger.Debugf("[%s] Sent %s", p.address, strings.ToUpper(msg.Command()))
+			}
+		}(msg)
 	}
 }
 
