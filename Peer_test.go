@@ -3,7 +3,6 @@ package p2p
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -190,8 +189,7 @@ func Test_readHandler(t *testing.T) {
 	})
 
 	t.Run("read message - block", func(t *testing.T) {
-		myConn, peer, peerHandler := newTestPeer(t)
-		fmt.Sprintf("%v", peer)
+		myConn, _, peerHandler := newTestPeer(t)
 
 		msg := wire.NewMsgBlock(&wire.BlockHeader{
 			Version:    1,
@@ -221,7 +219,7 @@ func Test_readHandler(t *testing.T) {
 		blocks := peerHandler.GetBlock()
 		require.Equal(t, 1, len(blocks))
 		block := blocks[0]
-		assert.Equal(t, 2, len(block.TransactionIDs))
+		assert.Equal(t, 2, len(block.TransactionHashes))
 
 		// read the transactions
 		expectedTxBytes := [][]byte{test.TX1Bytes, test.TX2Bytes}

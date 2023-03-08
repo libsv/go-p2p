@@ -3,15 +3,16 @@ package p2p
 import (
 	"io"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 )
 
 // BlockMessage only stores the transaction IDs of the block, not the full transactions
 type BlockMessage struct {
-	Header         *wire.BlockHeader
-	Height         uint64
-	TransactionIDs [][]byte
-	Size           uint64
+	Header            *wire.BlockHeader
+	Height            uint64
+	TransactionHashes []*chainhash.Hash
+	Size              uint64
 }
 
 func (bm *BlockMessage) Bsvdecode(io.Reader, uint32, wire.MessageEncoding) error {

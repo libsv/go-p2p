@@ -1,5 +1,7 @@
 package p2p
 
+import "github.com/libsv/go-p2p/chaincfg/chainhash"
+
 type TestLogger struct{}
 
 func (l TestLogger) LogLevel() int {
@@ -13,10 +15,10 @@ func (l TestLogger) Fatalf(format string, args ...interface{}) {}
 
 type PeerManagerMock struct {
 	Peers                 map[string]PeerI
-	AnnouncedTransactions [][]byte
-	RequestTransactions   [][]byte
-	AnnouncedBlocks       [][]byte
-	RequestBlocks         [][]byte
+	AnnouncedTransactions []*chainhash.Hash
+	RequestTransactions   []*chainhash.Hash
+	AnnouncedBlocks       []*chainhash.Hash
+	RequestBlocks         []*chainhash.Hash
 	peerCreator           func(peerAddress string, peerHandler PeerHandlerI) (PeerI, error)
 }
 
@@ -26,22 +28,22 @@ func NewPeerManagerMock() *PeerManagerMock {
 	}
 }
 
-func (p *PeerManagerMock) RequestTransaction(txID []byte) PeerI {
-	p.RequestTransactions = append(p.RequestTransactions, txID)
+func (p *PeerManagerMock) RequestTransaction(hash *chainhash.Hash) PeerI {
+	p.RequestTransactions = append(p.RequestTransactions, hash)
 	return nil
 }
 
-func (p *PeerManagerMock) AnnounceTransaction(txID []byte, _ []PeerI) []PeerI {
-	p.AnnouncedTransactions = append(p.AnnouncedTransactions, txID)
+func (p *PeerManagerMock) AnnounceTransaction(hash *chainhash.Hash, _ []PeerI) []PeerI {
+	p.AnnouncedTransactions = append(p.AnnouncedTransactions, hash)
 	return nil
 }
 
-func (p *PeerManagerMock) AnnounceBlock(blockHash []byte, _ []PeerI) []PeerI {
+func (p *PeerManagerMock) AnnounceBlock(blockHash *chainhash.Hash, _ []PeerI) []PeerI {
 	p.AnnouncedBlocks = append(p.AnnouncedBlocks, blockHash)
 	return nil
 }
 
-func (p *PeerManagerMock) RequestBlock(blockHash []byte) PeerI {
+func (p *PeerManagerMock) RequestBlock(blockHash *chainhash.Hash) PeerI {
 	p.RequestBlocks = append(p.RequestBlocks, blockHash)
 	return nil
 }

@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/libsv/go-bt/v2"
 	"github.com/libsv/go-p2p/bsvutil"
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
@@ -32,12 +31,12 @@ var (
 )
 
 type Block struct {
-	Hash         []byte `json:"hash,omitempty"`          // Little endian
-	PreviousHash []byte `json:"previous_hash,omitempty"` // Little endian
-	MerkleRoot   []byte `json:"merkle_root,omitempty"`   // Little endian
-	Height       uint64 `json:"height,omitempty"`
-	Size         uint64 `json:"size,omitempty"`
-	TxCount      uint64 `json:"tx_count,omitempty"`
+	Hash         *chainhash.Hash `json:"hash,omitempty"`          // Little endian
+	PreviousHash *chainhash.Hash `json:"previous_hash,omitempty"` // Little endian
+	MerkleRoot   *chainhash.Hash `json:"merkle_root,omitempty"`   // Little endian
+	Height       uint64          `json:"height,omitempty"`
+	Size         uint64          `json:"size,omitempty"`
+	TxCount      uint64          `json:"tx_count,omitempty"`
 }
 
 type Peer struct {
@@ -55,8 +54,8 @@ type Peer struct {
 	sentVerAck     atomic.Bool
 	receivedVerAck atomic.Bool
 	batchDelay     time.Duration
-	invBatcher     *batcher.Batcher[[]byte]
-	dataBatcher    *batcher.Batcher[[]byte]
+	invBatcher     *batcher.Batcher[chainhash.Hash]
+	dataBatcher    *batcher.Batcher[chainhash.Hash]
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -371,47 +370,35 @@ func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData) {
 	}
 }
 
-func (p *Peer) AnnounceTransaction(txid []byte) {
-	p.invBatcher.Put(&txid)
+func (p *Peer) AnnounceTransaction(hash *chainhash.Hash) {
+	p.invBatcher.Put(hash)
 }
 
-func (p *Peer) RequestTransaction(txID []byte) {
-	p.dataBatcher.Put(&txID)
+func (p *Peer) RequestTransaction(hash *chainhash.Hash) {
+	p.dataBatcher.Put(hash)
 }
 
-func (p *Peer) AnnounceBlock(blockHash []byte) {
+func (p *Peer) AnnounceBlock(blockHash *chainhash.Hash) {
 	invMsg := wire.NewMsgInv()
 
-	hash, err := chainhash.NewHash(blockHash)
-	if err != nil {
-		p.logger.Infof("ERROR announcing new tx [%s]: %v", hash.String(), err)
-		return
-	}
-
-	iv := wire.NewInvVect(wire.InvTypeBlock, hash)
-	if err = invMsg.AddInvVect(iv); err != nil {
+	iv := wire.NewInvVect(wire.InvTypeBlock, blockHash)
+	if err := invMsg.AddInvVect(iv); err != nil {
 		p.logger.Infof("ERROR adding invVect to INV message: %v", err)
 		return
 	}
 
-	if err = p.WriteMsg(invMsg); err != nil {
+	if err := p.WriteMsg(invMsg); err != nil {
 		p.logger.Infof("[%s] ERROR sending INV for block: %v", p.String(), err)
 	} else {
-		p.logger.Infof("[%s] Sent INV for block %s", p.String(), hash.String())
+		p.logger.Infof("[%s] Sent INV for block %v", p.String(), blockHash)
 	}
 }
 
-func (p *Peer) RequestBlock(blockHash []byte) {
+func (p *Peer) RequestBlock(blockHash *chainhash.Hash) {
 	dataMsg := wire.NewMsgGetData()
 
-	hash, err := chainhash.NewHash(blockHash)
-	if err != nil {
-		p.logger.Infof("ERROR getting tx [%s]: %v", hash.String(), err)
-		return
-	}
-
-	iv := wire.NewInvVect(wire.InvTypeTx, hash)
-	if err = dataMsg.AddInvVect(iv); err != nil {
+	iv := wire.NewInvVect(wire.InvTypeTx, blockHash)
+	if err := dataMsg.AddInvVect(iv); err != nil {
 		p.logger.Infof("ERROR adding invVect to GETDATA message: %v", err)
 		return
 	}
@@ -419,20 +406,14 @@ func (p *Peer) RequestBlock(blockHash []byte) {
 	if err := p.WriteMsg(dataMsg); err != nil {
 		p.logger.Infof("[%s] ERROR sending block data message: %v", p.String(), err)
 	} else {
-		p.logger.Infof("[%s] Sent GETDATA for block %s", p.String(), hash.String())
+		p.logger.Infof("[%s] Sent GETDATA for block %v", p.String(), blockHash)
 	}
 }
 
-func (p *Peer) sendInvBatch(batch []*[]byte) {
+func (p *Peer) sendInvBatch(batch []*chainhash.Hash) {
 	invMsg := wire.NewMsgInvSizeHint(uint(len(batch)))
 
-	for _, txid := range batch {
-		hash, err := chainhash.NewHash(*txid)
-		if err != nil {
-			p.logger.Infof("ERROR announcing new tx [%s]: %v", hash.String(), err)
-			continue
-		}
-
+	for _, hash := range batch {
 		iv := wire.NewInvVect(wire.InvTypeTx, hash)
 		_ = invMsg.AddInvVect(iv)
 	}
@@ -440,21 +421,15 @@ func (p *Peer) sendInvBatch(batch []*[]byte) {
 	p.writeChan <- invMsg
 
 	p.logger.Infof("[%s] Sent INV (%d items)", p.String(), len(batch))
-	for _, txid := range batch {
-		p.logger.Debugf("        %x", bt.ReverseBytes(*txid))
+	for _, hash := range batch {
+		p.logger.Debugf("        %v", hash)
 	}
 }
 
-func (p *Peer) sendDataBatch(batch []*[]byte) {
+func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 	dataMsg := wire.NewMsgGetData()
 
-	for _, txid := range batch {
-		hash, err := chainhash.NewHash(*txid)
-		if err != nil {
-			p.logger.Infof("ERROR getting tx [%x]: %v", txid, err)
-			continue
-		}
-
+	for _, hash := range batch {
 		iv := wire.NewInvVect(wire.InvTypeTx, hash)
 		_ = dataMsg.AddInvVect(iv)
 	}

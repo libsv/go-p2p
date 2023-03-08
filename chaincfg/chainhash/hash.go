@@ -80,6 +80,11 @@ func NewHash(newHash []byte) (*Hash, error) {
 	return &sh, err
 }
 
+// func NewHashNoError(newHash []byte) *Hash {
+// 	sh, _ := NewHash(newHash)
+// 	return sh
+// }
+
 // NewHashFromStr creates a Hash from a hash string.  The string should be
 // the hexadecimal string of a byte-reversed hash, but any missing characters
 // result in zero padding at the end of the Hash.
@@ -91,6 +96,11 @@ func NewHashFromStr(hash string) (*Hash, error) {
 	}
 	return ret, nil
 }
+
+// func NewHashFromStrNoError(hash string) *Hash {
+// 	sh, _ := NewHashFromStr(hash)
+// 	return sh
+// }
 
 // Decode decodes the byte-reversed hexadecimal string encoding of a Hash to a
 // destination.

@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/libsv/go-bt/v2"
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 )
 
@@ -36,7 +37,12 @@ func setPeerBlockHandler() {
 			}
 			bytesRead += int(read)
 			txBytes := tx.TxIDBytes() // this returns the bytes in BigEndian
-			blockMessage.TransactionIDs = append(blockMessage.TransactionIDs, bt.ReverseBytes(txBytes))
+			hash, err := chainhash.NewHash(bt.ReverseBytes(txBytes))
+			if err != nil {
+				return 0, nil, nil, err
+			}
+
+			blockMessage.TransactionHashes = append(blockMessage.TransactionHashes, hash)
 
 			if i == 0 {
 				blockMessage.Height = extractHeightFromCoinbaseTx(tx)

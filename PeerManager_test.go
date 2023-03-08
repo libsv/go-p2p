@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
-	"github.com/ordishs/go-utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	tx1         = "b042f298deabcebbf15355aa3a13c7d7cfe96c44ac4f492735f936f8e50d06f6"
-	tx1Bytes, _ = utils.DecodeAndReverseHexString(tx1)
-	logger      = TestLogger{}
+	tx1        = "b042f298deabcebbf15355aa3a13c7d7cfe96c44ac4f492735f936f8e50d06f6"
+	tx1Hash, _ = chainhash.NewHashFromStr(tx1)
+	logger     = TestLogger{}
 )
 
 func TestNewPeerManager(t *testing.T) {
@@ -71,14 +71,14 @@ func TestAnnounceNewTransaction(t *testing.T) {
 		err := pm.AddPeer(peer)
 		require.NoError(t, err)
 
-		pm.AnnounceTransaction(tx1Bytes, nil)
+		pm.AnnounceTransaction(tx1Hash, nil)
 
 		// we need to wait for the batcher to send the inv
 		time.Sleep(5 * time.Millisecond)
 
 		announcements := peer.GetAnnouncements()
 		require.Len(t, announcements, 1)
-		assert.Equal(t, tx1Bytes, announcements[0])
+		assert.Equal(t, tx1Hash, announcements[0])
 	})
 
 	t.Run("announce tx - multiple peers", func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestAnnounceNewTransaction(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		pm.AnnounceTransaction(tx1Bytes, nil)
+		pm.AnnounceTransaction(tx1Hash, nil)
 
 		// we need to wait for the batcher to send the inv
 		time.Sleep(5 * time.Millisecond)
@@ -108,7 +108,7 @@ func TestAnnounceNewTransaction(t *testing.T) {
 			}
 
 			require.Len(t, announcements, 1)
-			assert.Equal(t, tx1Bytes, announcements[0])
+			assert.Equal(t, tx1Hash, announcements[0])
 			peersMessaged++
 		}
 		assert.GreaterOrEqual(t, peersMessaged, len(peers)/2)

@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 	"github.com/ordishs/go-utils"
 	"github.com/ordishs/gocore"
@@ -81,7 +82,7 @@ func (pm *PeerManager) GetPeers() []PeerI {
 
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil
 // it will return the peers that the transaction was actually announced to
-func (pm *PeerManager) AnnounceTransaction(txHash []byte, peers []PeerI) []PeerI {
+func (pm *PeerManager) AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI) []PeerI {
 	if len(peers) == 0 {
 		peers = pm.GetAnnouncedPeers()
 	}
@@ -93,7 +94,7 @@ func (pm *PeerManager) AnnounceTransaction(txHash []byte, peers []PeerI) []PeerI
 	return peers
 }
 
-func (pm *PeerManager) RequestTransaction(txHash []byte) PeerI {
+func (pm *PeerManager) RequestTransaction(txHash *chainhash.Hash) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {
@@ -113,7 +114,7 @@ func (pm *PeerManager) RequestTransaction(txHash []byte) PeerI {
 	return sendToPeer
 }
 
-func (pm *PeerManager) AnnounceBlock(blockHash []byte, peers []PeerI) []PeerI {
+func (pm *PeerManager) AnnounceBlock(blockHash *chainhash.Hash, peers []PeerI) []PeerI {
 	if len(peers) == 0 {
 		peers = pm.GetAnnouncedPeers()
 	}
@@ -125,7 +126,7 @@ func (pm *PeerManager) AnnounceBlock(blockHash []byte, peers []PeerI) []PeerI {
 	return peers
 }
 
-func (pm *PeerManager) RequestBlock(blockHash []byte) PeerI {
+func (pm *PeerManager) RequestBlock(blockHash *chainhash.Hash) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {

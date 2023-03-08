@@ -3,6 +3,7 @@ package p2p
 import (
 	"sync"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 )
 
@@ -13,10 +14,10 @@ type PeerMock struct {
 	network             wire.BitcoinNet
 	writeChan           chan wire.Message
 	messages            []wire.Message
-	announcements       [][]byte
-	requestTransactions [][]byte
-	announceBlocks      [][]byte
-	requestBlocks       [][]byte
+	announcements       []*chainhash.Hash
+	requestTransactions []*chainhash.Hash
+	announceBlocks      []*chainhash.Hash
+	requestBlocks       []*chainhash.Hash
 }
 
 func NewPeerMock(address string, peerHandler PeerHandlerI, network wire.BitcoinNet) (*PeerMock, error) {
@@ -53,56 +54,56 @@ func (p *PeerMock) Len() int {
 	return len(p.messages)
 }
 
-func (p *PeerMock) AnnounceTransaction(txHash []byte) {
+func (p *PeerMock) AnnounceTransaction(txHash *chainhash.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.announcements = append(p.announcements, txHash)
 }
 
-func (p *PeerMock) GetAnnouncements() [][]byte {
+func (p *PeerMock) GetAnnouncements() []*chainhash.Hash {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.announcements
 }
 
-func (p *PeerMock) RequestTransaction(txHash []byte) {
+func (p *PeerMock) RequestTransaction(txHash *chainhash.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.requestTransactions = append(p.requestTransactions, txHash)
 }
 
-func (p *PeerMock) GetRequestTransactions() [][]byte {
+func (p *PeerMock) GetRequestTransactions() []*chainhash.Hash {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.requestTransactions
 }
 
-func (p *PeerMock) AnnounceBlock(blockHash []byte) {
+func (p *PeerMock) AnnounceBlock(blockHash *chainhash.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.announceBlocks = append(p.announceBlocks, blockHash)
 }
 
-func (p *PeerMock) GetAnnounceBlocks() [][]byte {
+func (p *PeerMock) GetAnnounceBlocks() []*chainhash.Hash {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.announceBlocks
 }
 
-func (p *PeerMock) RequestBlock(blockHash []byte) {
+func (p *PeerMock) RequestBlock(blockHash *chainhash.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	p.requestBlocks = append(p.requestBlocks, blockHash)
 }
 
-func (p *PeerMock) GetRequestBlocks() [][]byte {
+func (p *PeerMock) GetRequestBlocks() []*chainhash.Hash {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 )
 
@@ -17,12 +18,12 @@ type MockPeerHandler struct {
 	transaction              []wire.MsgTx
 	blockAnnouncements       []wire.InvVect
 	block                    []BlockMessage
-	blockTransactionIDs      [][][]byte
+	blockTransactionHashes   [][]*chainhash.Hash
 }
 
 func NewMockPeerHandler() *MockPeerHandler {
 	return &MockPeerHandler{
-		blockTransactionIDs: make([][][]byte, 0),
+		blockTransactionHashes: make([][]*chainhash.Hash, 0),
 	}
 }
 
@@ -127,8 +128,8 @@ func (m *MockPeerHandler) HandleBlock(msg *BlockMessage, _ PeerI) error {
 
 	blockIdx := len(m.block)
 	m.block = append(m.block, *msg)
-	m.blockTransactionIDs = append(m.blockTransactionIDs, make([][]byte, 0))
-	m.blockTransactionIDs[blockIdx] = msg.TransactionIDs
+	m.blockTransactionHashes = append(m.blockTransactionHashes, make([]*chainhash.Hash, 0))
+	m.blockTransactionHashes[blockIdx] = msg.TransactionHashes
 
 	return nil
 }
@@ -140,9 +141,9 @@ func (m *MockPeerHandler) GetBlock() []BlockMessage {
 	return m.block
 }
 
-func (m *MockPeerHandler) GetBlockTransactions(index int) [][]byte {
+func (m *MockPeerHandler) GetBlockTransactions(index int) []*chainhash.Hash {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.blockTransactionIDs[index]
+	return m.blockTransactionHashes[index]
 }

@@ -3,6 +3,7 @@ package p2p
 import (
 	"fmt"
 
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
 )
 
@@ -19,10 +20,10 @@ var (
 )
 
 type PeerManagerI interface {
-	AnnounceTransaction(txHash []byte, peers []PeerI) []PeerI
-	RequestTransaction(txHash []byte) PeerI
-	AnnounceBlock(blockHash []byte, peers []PeerI) []PeerI
-	RequestBlock(blockHash []byte) PeerI
+	AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI) []PeerI
+	RequestTransaction(txHash *chainhash.Hash) PeerI
+	AnnounceBlock(blockHash *chainhash.Hash, peers []PeerI) []PeerI
+	RequestBlock(blockHash *chainhash.Hash) PeerI
 	AddPeer(peer PeerI) error
 	RemovePeer(peerURL string) error
 	GetPeers() []PeerI
@@ -32,10 +33,10 @@ type PeerI interface {
 	Connected() bool
 	WriteMsg(msg wire.Message) error
 	String() string
-	AnnounceTransaction(txHash []byte)
-	RequestTransaction(txHash []byte)
-	AnnounceBlock(blockHash []byte)
-	RequestBlock(blockHash []byte)
+	AnnounceTransaction(txHash *chainhash.Hash)
+	RequestTransaction(txHash *chainhash.Hash)
+	AnnounceBlock(blockHash *chainhash.Hash)
+	RequestBlock(blockHash *chainhash.Hash)
 	Network() wire.BitcoinNet
 }
 
