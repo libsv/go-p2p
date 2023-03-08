@@ -7,6 +7,7 @@ package chainhash
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 )
 
@@ -67,6 +68,23 @@ func (hash *Hash) IsEqual(target *Hash) bool {
 		return false
 	}
 	return *hash == *target
+}
+
+func (hash *Hash) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hash.String())
+}
+
+func (hash *Hash) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	h, err := NewHashFromStr(s)
+	if err != nil {
+		return err
+	}
+	*hash = *h
+	return nil
 }
 
 // NewHash returns a new Hash from a byte slice.  An error is returned if
