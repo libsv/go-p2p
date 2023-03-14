@@ -84,26 +84,22 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 		go p.writeChannelHandler()
 	}
 
-	if p.incomingConn != nil {
-		p.logger.Infof("[%s] Incoming connection from peer on %s", p.address, p.network)
-		go func() {
-			err := p.connect()
-			if err != nil {
-				logger.Warnf("Failed to connect to peer %s: %v", address, err)
-			}
-		}()
-	} else {
-		// reconnect if disconnected, but only on outgoing connections
+	go func() {
 		err := p.connect()
 		if err != nil {
 			logger.Warnf("Failed to connect to peer %s: %v", address, err)
 		}
+	}()
 
+	if p.incomingConn != nil {
+		p.logger.Infof("[%s] Incoming connection from peer on %s", p.address, p.network)
+	} else {
+		// reconnect if disconnected, but only on outgoing connections
 		go func() {
 			for range time.NewTicker(10 * time.Second).C {
 				// logger.Debugf("checking connection to peer %s, connected = %t, connecting = %t", address, p.Connected(), p.Connecting())
 				if !p.Connected() && !p.Connecting() {
-					err = p.connect()
+					err := p.connect()
 					if err != nil {
 						logger.Warnf("Failed to connect to peer %s: %v", address, err)
 					}

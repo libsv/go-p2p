@@ -222,7 +222,7 @@ func Test_readHandler(t *testing.T) {
 		assert.Equal(t, 2, len(block.TransactionHashes))
 
 		// read the transactions
-		expectedTxBytes := [][]byte{test.TX1Bytes, test.TX2Bytes}
+		expectedTxBytes := []*chainhash.Hash{test.TX1Hash, test.TX2Hash}
 		blockTransactions := peerHandler.GetBlockTransactions(0)
 		for i, txMsg := range blockTransactions {
 			assert.Equal(t, expectedTxBytes[i], txMsg)
