@@ -14,7 +14,7 @@ func (l TestLogger) Errorf(format string, args ...interface{}) {}
 func (l TestLogger) Fatalf(format string, args ...interface{}) {}
 
 type PeerManagerMock struct {
-	Peers                 map[string]PeerI
+	Peers                 []PeerI
 	AnnouncedTransactions []*chainhash.Hash
 	RequestTransactions   []*chainhash.Hash
 	AnnouncedBlocks       []*chainhash.Hash
@@ -24,7 +24,7 @@ type PeerManagerMock struct {
 
 func NewPeerManagerMock() *PeerManagerMock {
 	return &PeerManagerMock{
-		Peers: make(map[string]PeerI),
+		Peers: make([]PeerI, 0),
 	}
 }
 
@@ -53,19 +53,13 @@ func (p *PeerManagerMock) PeerCreator(peerCreator func(peerAddress string, peerH
 }
 
 func (p *PeerManagerMock) AddPeer(peer PeerI) error {
-	p.Peers[peer.String()] = peer
-	return nil
-}
-
-func (p *PeerManagerMock) RemovePeer(peerURL string) error {
-	delete(p.Peers, peerURL)
+	p.Peers = append(p.Peers, peer)
 	return nil
 }
 
 func (p *PeerManagerMock) GetPeers() []PeerI {
 	peers := make([]PeerI, 0, len(p.Peers))
-	for _, peer := range p.Peers {
-		peers = append(peers, peer)
-	}
+	peers = append(peers, p.Peers...)
+
 	return peers
 }

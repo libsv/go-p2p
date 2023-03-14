@@ -45,7 +45,7 @@ func Test_incomingConnection(t *testing.T) {
 func TestString(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
 		_, p, _ := newTestPeer(t)
-		assert.Equal(t, "localhost:68333", p.String())
+		assert.Equal(t, "MockPeerHandler:0000", p.String())
 	})
 }
 
@@ -248,10 +248,12 @@ func Test_readHandler(t *testing.T) {
 
 func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
+
 	peerHandler := NewMockPeerHandler()
+
 	p, err := NewPeer(
 		&TestLogger{},
-		"localhost:68333",
+		"MockPeerHandler:0000",
 		peerHandler,
 		wire.MainNet,
 		WithDialer(func(network, address string) (net.Conn, error) {
@@ -263,9 +265,14 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	doHandshake(t, p, myConn)
 
 	// wait for the peer to be connected
+	count := 0
 	for {
 		if p.Connected() {
 			break
+		}
+		count++
+		if count >= 3 {
+			t.Error("peer not connected")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -278,7 +285,7 @@ func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerHandler := NewMockPeerHandler()
 	p, err := NewPeer(
 		&TestLogger{},
-		"localhost:68333",
+		"MockPeerHandler:0000",
 		peerHandler,
 		wire.MainNet,
 		WithIncomingConnection(peerConn),
@@ -303,7 +310,7 @@ func doHandshake(t *testing.T, p *Peer, myConn net.Conn) {
 	require.NoError(t, err)
 
 	// send our version message
-	versionMsg := p.versionMessage("localhost:68333")
+	versionMsg := p.versionMessage("MockPeerHandler:0000")
 	err = wire.WriteMessage(myConn, versionMsg, wire.ProtocolVersion, wire.MainNet)
 	require.NoError(t, err)
 

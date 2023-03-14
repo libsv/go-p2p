@@ -55,7 +55,7 @@ func TestNewPeerManager(t *testing.T) {
 			_ = pm.AddPeer(peer)
 		}
 
-		assert.Len(t, pm.GetPeers(), 1)
+		assert.Len(t, pm.GetPeers(), 4)
 	})
 }
 

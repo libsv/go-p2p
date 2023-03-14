@@ -13,7 +13,7 @@ import (
 
 type PeerManager struct {
 	mu         sync.RWMutex
-	peers      map[string]PeerI
+	peers      []PeerI
 	network    wire.BitcoinNet
 	batchDelay time.Duration
 	logger     utils.Logger
@@ -34,7 +34,7 @@ func NewPeerManager(logger utils.Logger, network wire.BitcoinNet, options ...Pee
 	logger.Infof("Excessive block size set to %d", ebs)
 
 	pm := &PeerManager{
-		peers:   make(map[string]PeerI),
+		peers:   make([]PeerI, 0),
 		network: network,
 		logger:  logger,
 	}
@@ -54,16 +54,7 @@ func (pm *PeerManager) AddPeer(peer PeerI) error {
 		return ErrPeerNetworkMismatch
 	}
 
-	pm.peers[peer.String()] = peer
-
-	return nil
-}
-
-func (pm *PeerManager) RemovePeer(peerURL string) error {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	delete(pm.peers, peerURL)
+	pm.peers = append(pm.peers, peer)
 
 	return nil
 }
@@ -73,9 +64,7 @@ func (pm *PeerManager) GetPeers() []PeerI {
 	defer pm.mu.RUnlock()
 
 	peers := make([]PeerI, 0, len(pm.peers))
-	for _, peer := range pm.peers {
-		peers = append(peers, peer)
-	}
+	peers = append(peers, pm.peers...)
 
 	return peers
 }

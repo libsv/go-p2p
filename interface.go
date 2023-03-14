@@ -17,7 +17,6 @@ type PeerManagerI interface {
 	AnnounceBlock(blockHash *chainhash.Hash, peers []PeerI) []PeerI
 	RequestBlock(blockHash *chainhash.Hash) PeerI
 	AddPeer(peer PeerI) error
-	RemovePeer(peerURL string) error
 	GetPeers() []PeerI
 }
 
