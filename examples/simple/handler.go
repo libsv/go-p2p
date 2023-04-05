@@ -50,8 +50,13 @@ func (s *SimplePeerHandler) HandleBlockAnnouncement(msg *wire.InvVect, peer p2p.
 	return nil
 }
 
-func (s *SimplePeerHandler) HandleBlock(msg *p2p.BlockMessage, peer p2p.PeerI) error {
-	s.logger.Infof("Received block %s from peer %s", msg.Header.BlockHash().String(), peer.String())
+func (s *SimplePeerHandler) HandleBlock(msg wire.Message, peer p2p.PeerI) error {
+	blockMsg, ok := msg.(*p2p.BlockMessage)
+	if !ok {
+		return fmt.Errorf("failed to cast message to block message")
+	}
+
+	s.logger.Infof("Received block %s from peer %s", blockMsg.Header.BlockHash().String(), peer.String())
 	// This is called when a block is received from a peer. Handle this as you wish.
 	// note: the block message is a custom BlockMessage and not a wire.MsgBlock
 	return nil

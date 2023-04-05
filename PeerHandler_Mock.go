@@ -17,7 +17,7 @@ type MockPeerHandler struct {
 	transactionRejection     []wire.MsgReject
 	transaction              []wire.MsgTx
 	blockAnnouncements       []wire.InvVect
-	block                    []BlockMessage
+	block                    []wire.Message
 	blockTransactionHashes   [][]*chainhash.Hash
 }
 
@@ -122,19 +122,25 @@ func (m *MockPeerHandler) GetBlockAnnouncement() []wire.InvVect {
 	return m.blockAnnouncements
 }
 
-func (m *MockPeerHandler) HandleBlock(msg *BlockMessage, _ PeerI) error {
+func (m *MockPeerHandler) HandleBlock(msg wire.Message, _ PeerI) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	blockIdx := len(m.block)
-	m.block = append(m.block, *msg)
+	m.block = append(m.block, msg)
 	m.blockTransactionHashes = append(m.blockTransactionHashes, make([]*chainhash.Hash, 0))
-	m.blockTransactionHashes[blockIdx] = msg.TransactionHashes
+
+	if blockMsg, ok := msg.(*wire.MsgBlock); ok {
+		for _, tx := range blockMsg.Transactions {
+			ttx := tx.TxHash()
+			m.blockTransactionHashes[blockIdx] = append(m.blockTransactionHashes[blockIdx], &ttx)
+		}
+	}
 
 	return nil
 }
 
-func (m *MockPeerHandler) GetBlock() []BlockMessage {
+func (m *MockPeerHandler) GetBlock() []wire.Message {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

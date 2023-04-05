@@ -22,11 +22,6 @@ import (
 	"github.com/ordishs/gocore"
 )
 
-func init() {
-	// override the default wire block handler with our own that streams and stores only the transaction ids
-	setPeerBlockHandler()
-}
-
 var (
 	pingInterval = 2 * time.Minute
 )
@@ -109,7 +104,7 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	}
 
 	if p.batchDelay == 0 {
-		batchDelayMillis, _ := gocore.Config().GetInt("peerManager_batchDelay_millis", 100)
+		batchDelayMillis, _ := gocore.Config().GetInt("peerManager_batchDelay_millis", 200)
 		p.batchDelay = time.Duration(batchDelayMillis) * time.Millisecond
 	}
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
@@ -297,22 +292,37 @@ func (p *Peer) readHandler() {
 
 			case wire.CmdTx:
 				txMsg := msg.(*wire.MsgTx)
-				p.logger.Infof("Recv TX %s (%d bytes)", txMsg.TxHash().String(), txMsg.SerializeSize())
+				p.logger.Debugf("Recv TX %s (%d bytes)", txMsg.TxHash().String(), txMsg.SerializeSize())
 				if err = p.peerHandler.HandleTransaction(txMsg, p); err != nil {
 					p.logger.Errorf("Unable to process tx %s: %v", txMsg.TxHash().String(), err)
 				}
 
 			case wire.CmdBlock:
-				// Please note that this is the BlockMessage, not the wire.MsgBlock. See init() above.
+				msgBlock, ok := msg.(*wire.MsgBlock)
+				if ok {
+					p.logger.Infof("[%s] Recv %s: %s", p.address, strings.ToUpper(msg.Command()), msgBlock.Header.BlockHash().String())
+
+					err = p.peerHandler.HandleBlock(msgBlock, p)
+					if err != nil {
+						p.logger.Errorf("[%s] Unable to process block %s: %v", p.address, msgBlock.Header.BlockHash().String(), err)
+					}
+					continue
+				}
+
+				// Please note that this is the BlockMessage, not the wire.MsgBlock
 				blockMsg, ok := msg.(*BlockMessage)
 				if !ok {
-					p.logger.Errorf("Unable to cast block message")
+					p.logger.Errorf("Unable to cast block message, calling with generic wire.Message")
+					err = p.peerHandler.HandleBlock(msg, p)
+					if err != nil {
+						p.logger.Errorf("[%s] Unable to process block message: %v", p.address, err)
+					}
 					continue
 				}
 
 				p.logger.Infof("[%s] Recv %s: %s", p.address, strings.ToUpper(msg.Command()), blockMsg.Header.BlockHash().String())
 
-				err := p.peerHandler.HandleBlock(blockMsg, p)
+				err = p.peerHandler.HandleBlock(blockMsg, p)
 				if err != nil {
 					p.logger.Errorf("[%s] Unable to process block %s: %v", p.address, blockMsg.Header.BlockHash().String(), err)
 				}

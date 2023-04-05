@@ -218,8 +218,8 @@ func Test_readHandler(t *testing.T) {
 
 		blocks := peerHandler.GetBlock()
 		require.Equal(t, 1, len(blocks))
-		block := blocks[0]
-		assert.Equal(t, 2, len(block.TransactionHashes))
+		txs := peerHandler.GetBlockTransactions(0)
+		assert.Equal(t, 2, len(txs))
 
 		// read the transactions
 		expectedTxBytes := []*chainhash.Hash{test.TX1Hash, test.TX2Hash}

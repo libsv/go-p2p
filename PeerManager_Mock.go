@@ -24,7 +24,11 @@ type PeerManagerMock struct {
 
 func NewPeerManagerMock() *PeerManagerMock {
 	return &PeerManagerMock{
-		Peers: make([]PeerI, 0),
+		Peers:                 make([]PeerI, 0),
+		AnnouncedTransactions: make([]*chainhash.Hash, 0),
+		RequestTransactions:   make([]*chainhash.Hash, 0),
+		AnnouncedBlocks:       make([]*chainhash.Hash, 0),
+		RequestBlocks:         make([]*chainhash.Hash, 0),
 	}
 }
 
