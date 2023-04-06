@@ -405,7 +405,7 @@ func (p *Peer) AnnounceBlock(blockHash *chainhash.Hash) {
 func (p *Peer) RequestBlock(blockHash *chainhash.Hash) {
 	dataMsg := wire.NewMsgGetData()
 
-	iv := wire.NewInvVect(wire.InvTypeTx, blockHash)
+	iv := wire.NewInvVect(wire.InvTypeBlock, blockHash)
 	if err := dataMsg.AddInvVect(iv); err != nil {
 		p.logger.Infof("ERROR adding invVect to GETDATA message: %v", err)
 		return
