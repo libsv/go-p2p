@@ -9,3 +9,9 @@ func WithBatchDuration(batchDuration time.Duration) PeerManagerOptions {
 		pm.batchDelay = batchDuration
 	}
 }
+
+func WithExcessiveBlockSize(ebs int64) PeerManagerOptions {
+	return func(p *PeerManager) {
+		p.ebs = ebs
+	}
+}
