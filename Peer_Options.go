@@ -24,3 +24,9 @@ func WithIncomingConnection(conn net.Conn) PeerOptions {
 		p.incomingConn = conn
 	}
 }
+
+func WithMaximumMessageSize(maximumMessageSize int64) PeerOptions {
+	return func(p *Peer) {
+		p.maximumMessageSize = maximumMessageSize
+	}
+}
