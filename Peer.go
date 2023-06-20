@@ -97,7 +97,7 @@ func NewPeer(logger utils.Logger, address string, peerHandler PeerHandlerI, netw
 	} else {
 		// reconnect if disconnected, but only on outgoing connections
 		go func() {
-			for range time.NewTicker(10 * time.Second).C {
+			for range time.NewTicker(60 * time.Second).C {
 				// logger.Debugf("checking connection to peer %s, connected = %t, connecting = %t", address, p.Connected(), p.Connecting())
 				if !p.Connected() && !p.Connecting() {
 					err := p.connect()
