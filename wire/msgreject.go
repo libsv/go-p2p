@@ -103,7 +103,7 @@ func (msg *MsgReject) Bsvdecode(r io.Reader, pver uint32, enc MessageEncoding) e
 
 	// CmdBlock and CmdTx messages have an additional hash field that
 	// identifies the specific block or transaction.
-	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx {
+	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx || msg.Cmd == CmdExtendedTx {
 		err := readElement(r, &msg.Hash)
 		if err != nil {
 			return err
@@ -143,7 +143,7 @@ func (msg *MsgReject) BsvEncode(w io.Writer, pver uint32, enc MessageEncoding) e
 
 	// CmdBlock and CmdTx messages have an additional hash field that
 	// identifies the specific block or transaction.
-	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx {
+	if msg.Cmd == CmdBlock || msg.Cmd == CmdTx || msg.Cmd == CmdExtendedTx {
 		err := writeElement(w, &msg.Hash)
 		if err != nil {
 			return err
