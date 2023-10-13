@@ -1,6 +1,6 @@
 module github.com/libsv/go-p2p
 
-go 1.19
+go 1.21
 
 require (
 	github.com/cbeuw/connutil v0.0.0-20200411215123-966bfaa51ee3

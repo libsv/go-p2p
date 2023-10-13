@@ -1,13 +1,13 @@
 package p2p
 
 import (
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
-	"github.com/ordishs/go-utils"
 )
 
 const defaultExcessiveBlockSize = 4000000000
@@ -17,7 +17,7 @@ type PeerManager struct {
 	peers      []PeerI
 	network    wire.BitcoinNet
 	batchDelay time.Duration
-	logger     utils.Logger
+	logger     *slog.Logger
 	ebs        int64
 }
 
@@ -25,7 +25,7 @@ type PeerManager struct {
 // messageCh is a channel that will be used to send messages from peers to the parent process
 // this is used to pass INV messages from the bitcoin network peers to the parent process
 // at the moment this is only used for Inv tx message for "seen", "sent" and "rejected" transactions
-func NewPeerManager(logger utils.Logger, network wire.BitcoinNet, options ...PeerManagerOptions) PeerManagerI {
+func NewPeerManager(logger *slog.Logger, network wire.BitcoinNet, options ...PeerManagerOptions) PeerManagerI {
 
 	pm := &PeerManager{
 		peers:   make([]PeerI, 0),
@@ -38,7 +38,7 @@ func NewPeerManager(logger utils.Logger, network wire.BitcoinNet, options ...Pee
 		option(pm)
 	}
 
-	logger.Infof("Excessive block size set to %d", pm.ebs)
+	logger.Info("Excessive block size set to", slog.Int64("block size", pm.ebs))
 	wire.SetLimits(uint64(pm.ebs))
 
 	return pm
