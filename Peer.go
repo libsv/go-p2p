@@ -32,7 +32,7 @@ const (
 	commandKey = "cmd"
 	hashKey    = "hash"
 	errKey     = "err"
-	errType    = "type"
+	typeKey    = "type"
 
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
@@ -282,14 +282,19 @@ func (p *Peer) readHandler() {
 			p.sentVerAck.Store(true)
 
 		case wire.CmdPing:
-			pingMsg := msg.(*wire.MsgPing)
+			pingMsg, ok := msg.(*wire.MsgPing)
+			if !ok {
+				continue
+			}
 			p.writeChan <- wire.NewMsgPong(pingMsg.Nonce)
 
 		case wire.CmdInv:
-			invMsg := msg.(*wire.MsgInv)
-			wireLogger.Debug("Recv INV", slog.Int("items", len(invMsg.InvList)))
+			invMsg, ok := msg.(*wire.MsgInv)
+			if !ok {
+				continue
+			}
 			for _, inv := range invMsg.InvList {
-				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(errType, inv.Type.String()))
+				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
 			}
 
 			go func(invList []*wire.InvVect, routineLogger *slog.Logger) {
@@ -297,29 +302,29 @@ func (p *Peer) readHandler() {
 					switch invVect.Type {
 					case wire.InvTypeTx:
 						if err = p.peerHandler.HandleTransactionAnnouncement(invVect, p); err != nil {
-							commandLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(errKey, err.Error()))
+							commandLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 						}
 					case wire.InvTypeBlock:
 						if err = p.peerHandler.HandleBlockAnnouncement(invVect, p); err != nil {
-							commandLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(errKey, err.Error()))
+							commandLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 						}
 					}
 				}
 			}(invMsg.InvList, commandLogger)
 
 		case wire.CmdGetData:
-			dataMsg := msg.(*wire.MsgGetData)
-			if dataMsg == nil {
+			dataMsg, ok := msg.(*wire.MsgGetData)
+			if !ok {
 				continue
 			}
 			for _, inv := range dataMsg.InvList {
-				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()))
+				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
 			}
 			p.handleGetDataMsg(dataMsg, commandLogger)
 
 		case wire.CmdTx:
-			txMsg := msg.(*wire.MsgTx)
-			if txMsg == nil {
+			txMsg, ok := msg.(*wire.MsgTx)
+			if !ok {
 				continue
 			}
 			commandLogger.Debug(receivedMsg, slog.String(hashKey, txMsg.TxHash().String()), slog.Int("size", txMsg.SerializeSize()))
@@ -358,7 +363,10 @@ func (p *Peer) readHandler() {
 			}
 
 		case wire.CmdReject:
-			rejMsg := msg.(*wire.MsgReject)
+			rejMsg, ok := msg.(*wire.MsgReject)
+			if !ok {
+				continue
+			}
 			if err = p.peerHandler.HandleTransactionRejection(rejMsg, p); err != nil {
 				commandLogger.Error("Unable to process block", slog.String(hashKey, rejMsg.Hash.String()), slog.String(errKey, err.Error()))
 			}
@@ -381,28 +389,28 @@ func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
 
 			txBytes, err := p.peerHandler.HandleTransactionGet(invVect, p)
 			if err != nil {
-				logger.Warn("Unable to fetch tx from store", slog.String(hashKey, invVect.Hash.String()), slog.String(errKey, err.Error()))
+				logger.Warn("Unable to fetch tx from store", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 				continue
 			}
 
 			if txBytes == nil {
-				logger.Warn("tx does not exist", slog.String(hashKey, invVect.Hash.String()), slog.String(errKey, err.Error()))
+				logger.Warn("tx does not exist", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 				continue
 			}
 
 			tx, err := bsvutil.NewTxFromBytes(txBytes)
 			if err != nil {
-				logger.Error("failed to parse tx", slog.String(hashKey, invVect.Hash.String()), slog.String("rawHex", hex.EncodeToString(txBytes)), slog.String(errKey, err.Error()))
+				logger.Error("failed to parse tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String("rawHex", hex.EncodeToString(txBytes)), slog.String(errKey, err.Error()))
 				continue
 			}
 
 			p.writeChan <- tx.MsgTx()
 
 		case wire.InvTypeBlock:
-			logger.Info("Request for Block", slog.String(hashKey, invVect.Hash.String()))
+			logger.Info("Request for block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
 
 		default:
-			logger.Warn("Unknown type", slog.String(errType, invVect.Type.String()))
+			logger.Warn("Unknown type", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
 		}
 	}
 }
@@ -420,14 +428,14 @@ func (p *Peer) AnnounceBlock(blockHash *chainhash.Hash) {
 
 	iv := wire.NewInvVect(wire.InvTypeBlock, blockHash)
 	if err := invMsg.AddInvVect(iv); err != nil {
-		p.logger.Error("failed to add invVect to INV message", slog.String(errKey, err.Error()))
+		p.logger.Error("failed to add invVect to INV message", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()), slog.String(errKey, err.Error()))
 		return
 	}
 
 	if err := p.WriteMsg(invMsg); err != nil {
-		p.logger.Error("failed to send INV for block", slog.String(errKey, err.Error()))
+		p.logger.Error("failed to send INV message", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()), slog.String(errKey, err.Error()))
 	} else {
-		p.logger.Info("Sent INV for block", slog.String(hashKey, blockHash.String()))
+		p.logger.Info("Sent INV", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()))
 	}
 }
 
@@ -436,14 +444,14 @@ func (p *Peer) RequestBlock(blockHash *chainhash.Hash) {
 
 	iv := wire.NewInvVect(wire.InvTypeBlock, blockHash)
 	if err := dataMsg.AddInvVect(iv); err != nil {
-		p.logger.Error("failed to add invVect to GETDATA message", slog.String(errKey, err.Error()))
+		p.logger.Error("failed to add invVect to GETDATA message", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()), slog.String(errKey, err.Error()))
 		return
 	}
 
 	if err := p.WriteMsg(dataMsg); err != nil {
-		p.logger.Error("failed to send block data message", slog.String(errKey, err.Error()))
+		p.logger.Error("failed to send GETDATA message", slog.String(hashKey, blockHash.String()), slog.String(typeKey, iv.Type.String()), slog.String(errKey, err.Error()))
 	} else {
-		p.logger.Info("Sent GETDATA for block", slog.String(hashKey, blockHash.String()))
+		p.logger.Info("Sent GETDATA", slog.String(hashKey, blockHash.String()), slog.String(typeKey, iv.Type.String()))
 	}
 }
 
@@ -453,14 +461,10 @@ func (p *Peer) sendInvBatch(batch []*chainhash.Hash) {
 	for _, hash := range batch {
 		iv := wire.NewInvVect(wire.InvTypeTx, hash)
 		_ = invMsg.AddInvVect(iv)
+		p.logger.Debug("Sent INV", slog.String(hashKey, hash.String()), slog.String(typeKey, wire.InvTypeTx.String()))
 	}
 
 	p.writeChan <- invMsg
-
-	batchLogger := p.logger.With(slog.Int("items", len(batch)))
-	for _, hash := range batch {
-		batchLogger.Debug("Sent INV", slog.String(hashKey, hash.String()))
-	}
 }
 
 func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
@@ -469,6 +473,7 @@ func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 	for _, hash := range batch {
 		iv := wire.NewInvVect(wire.InvTypeTx, hash)
 		_ = dataMsg.AddInvVect(iv)
+		p.logger.Debug("Sent GETDATA", slog.String(hashKey, hash.String()), slog.String(typeKey, wire.InvTypeTx.String()))
 	}
 
 	if err := p.WriteMsg(dataMsg); err != nil {
@@ -496,27 +501,31 @@ func (p *Peer) writeChannelHandler() {
 			if errors.Is(err, io.EOF) {
 				panic("WRITE EOF")
 			}
-			p.logger.Error("Failed to write message: %v", slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to write message", slog.String(errKey, err.Error()))
 		}
 
-		go func(msg wire.Message) {
-			if msg.Command() == wire.CmdTx {
-				hash := msg.(*wire.MsgTx).TxHash()
-				if err := p.peerHandler.HandleTransactionSent(msg.(*wire.MsgTx), p); err != nil {
-					p.logger.Error("Unable to process tx", slog.String("hash", hash.String()), slog.String("err", err.Error()))
+		go func(message wire.Message) {
+			if message.Command() == wire.CmdTx {
+				msgTx, ok := message.(*wire.MsgTx)
+				if !ok {
+					return
+				}
+				hash := msgTx.TxHash()
+				if err := p.peerHandler.HandleTransactionSent(msgTx, p); err != nil {
+					p.logger.Error("Unable to process tx", slog.String(hashKey, hash.String()), slog.String(errKey, err.Error()))
 				}
 			}
 
-			switch m := msg.(type) {
+			switch m := message.(type) {
 			case *wire.MsgTx:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(msg.Command())), slog.String(hashKey, m.TxHash().String()))
+				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.TxHash().String()), slog.String(typeKey, "tx"))
 			case *wire.MsgBlock:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(msg.Command())), slog.String(hashKey, m.BlockHash().String()))
+				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.BlockHash().String()), slog.String(typeKey, "block"))
 			case *wire.MsgGetData:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(msg.Command())), slog.String(hashKey, m.InvList[0].Hash.String()))
+				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.InvList[0].Hash.String()), slog.String(typeKey, "getdata"))
 			case *wire.MsgInv:
 			default:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(msg.Command())))
+				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(typeKey, "unknown"))
 			}
 		}(msg)
 	}
