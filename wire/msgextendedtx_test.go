@@ -18,7 +18,7 @@ import (
 )
 
 // TestExtendedTx tests the MsgTx API.
-func _TestExtendedTx(t *testing.T) {
+func TestExtendedTx(t *testing.T) {
 	pver := ProtocolVersion
 
 	// Block 100000 hash.
@@ -128,7 +128,7 @@ func _TestExtendedTx(t *testing.T) {
 }
 
 // TestTxHash tests the ability to generate the hash of a transaction accurately.
-func _TestExtendedTxTxHash(t *testing.T) {
+func TestExtendedTxTxHash(t *testing.T) {
 	// Hash of first transaction from block 113875.
 	hashStr := "f051e59b5e2503ac626d03aaeac8ab7be2d72ba4b7e97119c5852d70d52dcb86"
 	wantHash, err := chainhash.NewHashFromStr(hashStr)
@@ -249,7 +249,7 @@ func TestExtendedTxSerialize(t *testing.T) {
 
 // TestTxSerializeErrors performs negative tests against wire encode and decode
 // of MsgTx to confirm error paths work correctly.
-func _TestExtendedTxSerializeErrors(t *testing.T) {
+func TestExtendedTxSerializeErrors(t *testing.T) {
 	tests := []struct {
 		in       *MsgTx // Value to encode
 		buf      []byte // Serialized data
@@ -310,7 +310,7 @@ func _TestExtendedTxSerializeErrors(t *testing.T) {
 // which are intentionally crafted to use large values for the variable number
 // of inputs and outputs are handled properly.  This could otherwise potentially
 // be used as an attack vector.
-func _TestExtendedTxOverflowErrors(t *testing.T) {
+func TestExtendedTxOverflowErrors(t *testing.T) {
 	// Use protocol version 70001 and transaction version 1 specifically
 	// here instead of the latest values because the test data is using
 	// bytes encoded with those versions.
@@ -405,7 +405,7 @@ func _TestExtendedTxOverflowErrors(t *testing.T) {
 
 // TestExtendedTxSerializeSizeStripped performs tests to ensure the serialize size for
 // various transactions is accurate.
-func _TestExtendedTxSerializeSizeStripped(t *testing.T) {
+func TestExtendedTxSerializeSizeStripped(t *testing.T) {
 	// Empty tx message.
 	noTx := NewMsgTx(1)
 	noTx.Version = 1
