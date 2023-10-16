@@ -164,7 +164,7 @@ func (msg *MsgExtendedTx) Bsvdecode(r io.Reader, pver uint32, enc MessageEncodin
 	if err != nil {
 		return err
 	}
-	if count != 0 || bytes.Compare(efHeader, []byte{0x00, 0x00, 0x00, 0x00, 0xEF}) != 0 {
+	if count != 0 || !bytes.Equal(efHeader, []byte{0x00, 0x00, 0x00, 0x00, 0xEF}) {
 		return fmt.Errorf("invalid extended tx EF header")
 	}
 

@@ -18,7 +18,7 @@ import (
 )
 
 // TestExtendedTx tests the MsgTx API.
-func _TestExtendedTx(t *testing.T) {
+func TestExtendedTx(t *testing.T) {
 	pver := ProtocolVersion
 
 	// Block 100000 hash.
@@ -128,7 +128,7 @@ func _TestExtendedTx(t *testing.T) {
 }
 
 // TestTxHash tests the ability to generate the hash of a transaction accurately.
-func _TestExtendedTxTxHash(t *testing.T) {
+func TestExtendedTxTxHash(t *testing.T) {
 	// Hash of first transaction from block 113875.
 	hashStr := "f051e59b5e2503ac626d03aaeac8ab7be2d72ba4b7e97119c5852d70d52dcb86"
 	wantHash, err := chainhash.NewHashFromStr(hashStr)
@@ -188,81 +188,68 @@ func TestExtendedTxSerialize(t *testing.T) {
 	}
 
 	tests := []struct {
+		name         string
 		in           *MsgExtendedTx // Message to encode
 		out          *MsgExtendedTx // Expected decoded message
 		buf          []byte         // Serialized data
 		pkScriptLocs []int          // Expected output script locations
 	}{
-		// No transactions.
 		{
-			noTx,
-			noTx,
-			noTxEncoded,
-			nil,
+			name:         "No transactions",
+			in:           noTx,
+			out:          noTx,
+			buf:          noTxEncoded,
+			pkScriptLocs: nil,
 		},
-
-		// Multiple transactions.
 		{
-			multiExtendedTx,
-			multiExtendedTx,
-			multiExtendedTxEncoded,
-			multiExtendedTxPkScriptLocs,
+			name:         "Multiple transactions.",
+			in:           multiExtendedTx,
+			out:          multiExtendedTx,
+			buf:          multiExtendedTxEncoded,
+			pkScriptLocs: multiExtendedTxPkScriptLocs,
 		},
 	}
 
 	t.Logf("Running %d tests", len(tests))
 	for i, test := range tests {
-		// Serialize the transaction.
-		var buf bytes.Buffer
-		err := test.in.Serialize(&buf)
-		if err != nil {
-			t.Errorf("Serialize #%d error %v", i, err)
-			continue
-		}
-		if !bytes.Equal(buf.Bytes(), test.buf) {
-			t.Errorf("Serialize #%d\n got: %s want: %s", i,
-				spew.Sdump(buf.Bytes()), spew.Sdump(test.buf))
-			continue
-		}
+		t.Run(test.name, func(t *testing.T) {
+			// Serialize the transaction.
+			var buf bytes.Buffer
+			err := test.in.Serialize(&buf)
+			if err != nil {
+				t.Fatalf("Serialize #%d error %v", i, err)
+			}
+			if !bytes.Equal(buf.Bytes(), test.buf) {
+				t.Fatalf("Serialize #%d\n got: %s want: %s", i,
+					spew.Sdump(buf.Bytes()), spew.Sdump(test.buf))
+			}
 
-		// Deserialize the transaction.
-		var tx MsgExtendedTx
-		rbuf := bytes.NewReader(test.buf)
-		err = tx.Deserialize(rbuf)
-		if err != nil {
-			t.Errorf("Deserialize #%d error %v", i, err)
-			continue
-		}
-		if !reflect.DeepEqual(&tx, test.out) {
-			t.Errorf("Deserialize #%d\n got: %s want: %s", i,
-				spew.Sdump(&tx), spew.Sdump(test.out))
-			continue
-		}
+			// Deserialize the transaction.
+			var tx MsgExtendedTx
+			rbuf := bytes.NewReader(test.buf)
+			err = tx.Deserialize(rbuf)
+			if err != nil {
+				t.Fatalf("Deserialize #%d error %v", i, err)
+			}
+			if !reflect.DeepEqual(&tx, test.out) {
+				t.Fatalf("Deserialize #%d\n got: %s want: %s", i,
+					spew.Sdump(&tx), spew.Sdump(test.out))
+			}
 
-		// Ensure the public key script locations are accurate.
-		pkScriptLocs := test.in.PkScriptLocs()
-		if !reflect.DeepEqual(pkScriptLocs, test.pkScriptLocs) {
-			t.Errorf("PkScriptLocs #%d\n got: %s want: %s", i,
-				spew.Sdump(pkScriptLocs),
-				spew.Sdump(test.pkScriptLocs))
-			continue
-		}
-		//for j, loc := range pkScriptLocs {
-		//	wantPkScript := test.in.TxOut[j].PkScript
-		//	gotPkScript := test.buf[loc : loc+len(wantPkScript)]
-		//	if !bytes.Equal(gotPkScript, wantPkScript) {
-		//		t.Errorf("PkScriptLocs #%d:%d\n unexpected "+
-		//			"script got: %s want: %s", i, j,
-		//			spew.Sdump(gotPkScript),
-		//			spew.Sdump(wantPkScript))
-		//	}
-		//}
+			// Ensure the public key script locations are accurate.
+			pkScriptLocs := test.in.PkScriptLocs()
+			if !reflect.DeepEqual(pkScriptLocs, test.pkScriptLocs) {
+				t.Fatalf("PkScriptLocs #%d\n got: %s want: %s", i,
+					spew.Sdump(pkScriptLocs),
+					spew.Sdump(test.pkScriptLocs))
+			}
+		})
 	}
 }
 
 // TestTxSerializeErrors performs negative tests against wire encode and decode
 // of MsgTx to confirm error paths work correctly.
-func _TestExtendedTxSerializeErrors(t *testing.T) {
+func TestExtendedTxSerializeErrors(t *testing.T) {
 	tests := []struct {
 		in       *MsgTx // Value to encode
 		buf      []byte // Serialized data
@@ -323,7 +310,7 @@ func _TestExtendedTxSerializeErrors(t *testing.T) {
 // which are intentionally crafted to use large values for the variable number
 // of inputs and outputs are handled properly.  This could otherwise potentially
 // be used as an attack vector.
-func _TestExtendedTxOverflowErrors(t *testing.T) {
+func TestExtendedTxOverflowErrors(t *testing.T) {
 	// Use protocol version 70001 and transaction version 1 specifically
 	// here instead of the latest values because the test data is using
 	// bytes encoded with those versions.
@@ -418,7 +405,7 @@ func _TestExtendedTxOverflowErrors(t *testing.T) {
 
 // TestExtendedTxSerializeSizeStripped performs tests to ensure the serialize size for
 // various transactions is accurate.
-func _TestExtendedTxSerializeSizeStripped(t *testing.T) {
+func TestExtendedTxSerializeSizeStripped(t *testing.T) {
 	// Empty tx message.
 	noTx := NewMsgTx(1)
 	noTx.Version = 1
@@ -514,13 +501,13 @@ var multiExtendedTxEncoded = []byte{
 	0xff, 0xff, 0xff, 0xff, // Previous output index
 	0x07,                                     // Varint for length of signature script
 	0x04, 0x31, 0xdc, 0x00, 0x1b, 0x01, 0x62, // Signature script
-	0x6F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Previous Satoshis
-	0x1b, // Previous script length
-	0x3b, 0xa2, 0x7a, 0xa2, 0x00, 0xb1, 0xce,
-	0xca, 0xad, 0x47, 0x8d, 0x2b, 0x00, 0x43,
-	0x23, 0x46, 0xc3, 0xf1, 0xf3, 0x98, 0x6d,
-	0xa1, 0xaf, 0xd3, 0x3e, 0x50, 0x06, // Previous Tx Script
-	0xff, 0xff, 0xff, 0xff, // Sequence
+	0xFF, 0xFF, 0xFF, 0xFF, 0x6F, 0x00, 0x00, 0x00, // Previous Satoshis
+	0x00, // Previous script length
+	0x00, 0x00, 0x00, 0x1b, 0x3b, 0xa2, 0x7a,
+	0xa2, 0x00, 0xb1, 0xce, 0xca, 0xad, 0x47,
+	0x8d, 0x2b, 0x00, 0x43, 0x23, 0x46, 0xc3,
+	0xf1, 0xf3, 0x98, 0x6d, 0xa1, 0xaf, 0xd3, // Previous Tx Script
+	0x3e, 0x50, 0x06, // Sequence
 	0x02,                                           // Varint for number of output transactions
 	0x00, 0xf2, 0x05, 0x2a, 0x01, 0x00, 0x00, 0x00, // Transaction amount
 	0x43, // Varint for length of pk script
