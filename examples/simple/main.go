@@ -1,16 +1,16 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 	"os/signal"
 
 	"github.com/libsv/go-p2p"
 	"github.com/libsv/go-p2p/wire"
-	"github.com/ordishs/gocore"
 )
 
 func main() {
-	logger := gocore.Log("simple-p2p-test")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Make sure to use the correct network here.
 	//   For mainnet use wire.MainNet
@@ -26,11 +26,11 @@ func main() {
 
 	peer, err := p2p.NewPeer(logger, "localhost:58333", peerHandler, network)
 	if err != nil {
-		logger.Fatalf("failed to create peer: %s", err)
+		logger.Error("failed to create peer", slog.String("err", err.Error()))
 	}
 
 	if err = peerManager.AddPeer(peer); err != nil {
-		logger.Fatalf("failed to add peer: %s", err)
+		logger.Error("failed to add peer", slog.String("err", err.Error()))
 	}
 
 	// setup signal catching

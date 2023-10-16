@@ -1,17 +1,34 @@
 package p2p
 
-import "github.com/libsv/go-p2p/chaincfg/chainhash"
+import (
+	"context"
+	"log/slog"
 
-type TestLogger struct{}
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
+)
 
-func (l TestLogger) LogLevel() int {
-	return 0
+type TestLogger struct {
 }
-func (l TestLogger) Debugf(format string, args ...interface{}) {}
-func (l TestLogger) Infof(format string, args ...interface{})  {}
-func (l TestLogger) Warnf(format string, args ...interface{})  {}
-func (l TestLogger) Errorf(format string, args ...interface{}) {}
-func (l TestLogger) Fatalf(format string, args ...interface{}) {}
+
+func (h *TestLogger) Enabled(_ context.Context, _ slog.Level) bool {
+	return false
+}
+
+func (h *TestLogger) Handle(_ context.Context, _ slog.Record) error {
+	return nil
+}
+
+func (h *TestLogger) WithAttrs(_ []slog.Attr) slog.Handler {
+	return &TestLogger{}
+}
+
+func (h *TestLogger) WithGroup(_ string) slog.Handler {
+	return &TestLogger{}
+}
+
+func (h *TestLogger) Handler() slog.Handler {
+	return &TestLogger{}
+}
 
 type PeerManagerMock struct {
 	Peers                 []PeerI
