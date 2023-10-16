@@ -19,7 +19,7 @@ var (
 
 func TestNewPeerManager(t *testing.T) {
 
-	logger := slog.New(&mockHandler{})
+	logger := slog.New(&TestLogger{})
 
 	t.Run("nil peers no error", func(t *testing.T) {
 		pm := NewPeerManager(logger, wire.TestNet)
@@ -64,7 +64,7 @@ func TestNewPeerManager(t *testing.T) {
 
 func TestAnnounceNewTransaction(t *testing.T) {
 	t.Run("announce tx", func(t *testing.T) {
-		logger := slog.New(&mockHandler{})
+		logger := slog.New(&TestLogger{})
 		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
 		require.NotNil(t, pm)
 
@@ -85,7 +85,7 @@ func TestAnnounceNewTransaction(t *testing.T) {
 	})
 
 	t.Run("announce tx - multiple peers", func(t *testing.T) {
-		logger := slog.New(&mockHandler{})
+		logger := slog.New(&TestLogger{})
 		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
 		require.NotNil(t, pm)
 

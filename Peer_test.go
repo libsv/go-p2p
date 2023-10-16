@@ -251,7 +251,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(&mockHandler{})
+	logger := slog.New(&TestLogger{})
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",
@@ -284,7 +284,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(&mockHandler{})
+	logger := slog.New(&TestLogger{})
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",

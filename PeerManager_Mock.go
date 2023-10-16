@@ -7,27 +7,27 @@ import (
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
 )
 
-type mockHandler struct {
+type TestLogger struct {
 }
 
-func (h *mockHandler) Enabled(_ context.Context, _ slog.Level) bool {
+func (h *TestLogger) Enabled(_ context.Context, _ slog.Level) bool {
 	return false
 }
 
-func (h *mockHandler) Handle(_ context.Context, _ slog.Record) error {
+func (h *TestLogger) Handle(_ context.Context, _ slog.Record) error {
 	return nil
 }
 
-func (h *mockHandler) WithAttrs(_ []slog.Attr) slog.Handler {
-	return &mockHandler{}
+func (h *TestLogger) WithAttrs(_ []slog.Attr) slog.Handler {
+	return &TestLogger{}
 }
 
-func (h *mockHandler) WithGroup(_ string) slog.Handler {
-	return &mockHandler{}
+func (h *TestLogger) WithGroup(_ string) slog.Handler {
+	return &TestLogger{}
 }
 
-func (h *mockHandler) Handler() slog.Handler {
-	return &mockHandler{}
+func (h *TestLogger) Handler() slog.Handler {
+	return &TestLogger{}
 }
 
 type PeerManagerMock struct {
