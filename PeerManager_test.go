@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 var (
 	tx1        = "b042f298deabcebbf15355aa3a13c7d7cfe96c44ac4f492735f936f8e50d06f6"
 	tx1Hash, _ = chainhash.NewHashFromStr(tx1)
-	logger     = TestLogger{}
 )
 
 func TestNewPeerManager(t *testing.T) {
+
+	logger := slog.New(&TestLogger{})
+
 	t.Run("nil peers no error", func(t *testing.T) {
 		pm := NewPeerManager(logger, wire.TestNet)
 		require.NotNil(t, pm)
@@ -61,7 +64,7 @@ func TestNewPeerManager(t *testing.T) {
 
 func TestAnnounceNewTransaction(t *testing.T) {
 	t.Run("announce tx", func(t *testing.T) {
-
+		logger := slog.New(&TestLogger{})
 		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
 		require.NotNil(t, pm)
 
@@ -82,6 +85,7 @@ func TestAnnounceNewTransaction(t *testing.T) {
 	})
 
 	t.Run("announce tx - multiple peers", func(t *testing.T) {
+		logger := slog.New(&TestLogger{})
 		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
 		require.NotNil(t, pm)
 

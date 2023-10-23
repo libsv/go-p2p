@@ -3,6 +3,7 @@ package p2p
 import (
 	"bytes"
 	"encoding/binary"
+	"log/slog"
 	"net"
 	"testing"
 	"time"
@@ -250,9 +251,9 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 
 	peerHandler := NewMockPeerHandler()
-
+	logger := slog.New(&TestLogger{})
 	p, err := NewPeer(
-		&TestLogger{},
+		logger,
 		"MockPeerHandler:0000",
 		peerHandler,
 		wire.MainNet,
@@ -283,8 +284,9 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 	peerHandler := NewMockPeerHandler()
+	logger := slog.New(&TestLogger{})
 	p, err := NewPeer(
-		&TestLogger{},
+		logger,
 		"MockPeerHandler:0000",
 		peerHandler,
 		wire.MainNet,
