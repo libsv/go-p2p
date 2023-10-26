@@ -32,7 +32,7 @@ func TestNewPeerManager(t *testing.T) {
 
 		peerHandler := NewMockPeerHandler()
 
-		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
+		peer, err := NewPeer("localhost:18333", peerHandler, wire.TestNet, WithLogger(logger))
 		require.NoError(t, err)
 
 		err = pm.AddPeer(peer)
@@ -54,7 +54,7 @@ func TestNewPeerManager(t *testing.T) {
 		peerHandler := NewMockPeerHandler()
 
 		for _, peerAddress := range peers {
-			peer, _ := NewPeer(logger, peerAddress, peerHandler, wire.TestNet)
+			peer, _ := NewPeer(peerAddress, peerHandler, wire.TestNet, WithLogger(logger))
 			_ = pm.AddPeer(peer)
 		}
 

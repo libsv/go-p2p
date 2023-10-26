@@ -24,7 +24,7 @@ func main() {
 		logger: logger,
 	}
 
-	peer, err := p2p.NewPeer(logger, "localhost:58333", peerHandler, network)
+	peer, err := p2p.NewPeer("localhost:58333", peerHandler, network, p2p.WithLogger(logger))
 	if err != nil {
 		logger.Error("failed to create peer", slog.String("err", err.Error()))
 	}
