@@ -502,6 +502,10 @@ func (p *Peer) writeChannelHandler() {
 				panic("WRITE EOF")
 			}
 			p.logger.Error("Failed to write message", slog.String(errKey, err.Error()))
+			err = p.connect()
+			if err != nil {
+				p.logger.Error("Failed to reconnect", slog.String(errKey, err.Error()))
+			}
 		}
 
 		go func(message wire.Message) {
