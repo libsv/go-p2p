@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +29,7 @@ var (
 const (
 	defaultMaximumMessageSize     = 32 * 1024 * 1024
 	defaultBatchDelayMilliseconds = 200
+	logLevelDefault               = slog.LevelInfo
 
 	commandKey = "cmd"
 	hashKey    = "hash"
@@ -68,15 +70,10 @@ type Peer struct {
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
-func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, network wire.BitcoinNet, options ...PeerOptions) (*Peer, error) {
+func NewPeer(address string, peerHandler PeerHandlerI, network wire.BitcoinNet, options ...PeerOptions) (*Peer, error) {
 	writeChan := make(chan wire.Message, 10000)
 
-	peerLogger := logger.With(
-		slog.Group("peer",
-			slog.String("network", network.String()),
-			slog.String("address", address),
-		),
-	)
+	peerLogger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevelDefault}))
 
 	p := &Peer{
 		network:            network,
@@ -92,6 +89,13 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 	for _, option := range options {
 		option(p)
 	}
+
+	p.logger = p.logger.With(
+		slog.Group("peer",
+			slog.String("network", network.String()),
+			slog.String("address", address),
+		),
+	)
 
 	p.initialize()
 

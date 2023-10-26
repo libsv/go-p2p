@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"log/slog"
 	"net"
 	"time"
 )
@@ -28,5 +29,11 @@ func WithIncomingConnection(conn net.Conn) PeerOptions {
 func WithMaximumMessageSize(maximumMessageSize int64) PeerOptions {
 	return func(p *Peer) {
 		p.maximumMessageSize = maximumMessageSize
+	}
+}
+
+func WithLogger(logger *slog.Logger) PeerOptions {
+	return func(p *Peer) {
+		p.logger = logger
 	}
 }
