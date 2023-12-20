@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -251,7 +252,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(&TestLogger{})
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",
@@ -284,7 +285,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(&TestLogger{})
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",
