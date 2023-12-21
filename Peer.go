@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/libsv/go-p2p/bsvutil"
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
@@ -36,6 +37,9 @@ const (
 
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
+
+	retryWriteMessageInterval = 10 * time.Second
+	retryWriteMessageAttempts = 5
 )
 
 type Block struct {
@@ -483,6 +487,25 @@ func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 	}
 }
 
+func (p *Peer) writeRetry(msg wire.Message) error {
+	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(retryWriteMessageInterval), retryWriteMessageAttempts)
+
+	operation := func() error {
+		return wire.WriteMessage(p.writeConn, msg, wire.ProtocolVersion, p.network)
+	}
+
+	notifyAndReconnect := func(err error, nextTry time.Duration) {
+		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+
+		err = p.connect()
+		if err != nil {
+			p.logger.Error("Failed to reconnect", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+		}
+	}
+
+	return backoff.RetryNotify(operation, policy, notifyAndReconnect)
+}
+
 func (p *Peer) writeChannelHandler() {
 	for msg := range p.writeChan {
 		// wait for the write connection to be ready
@@ -496,12 +519,9 @@ func (p *Peer) writeChannelHandler() {
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-
-		if err := wire.WriteMessage(p.writeConn, msg, wire.ProtocolVersion, p.network); err != nil {
-			if errors.Is(err, io.EOF) {
-				panic("WRITE EOF")
-			}
-			p.logger.Error("Failed to write message", slog.String(errKey, err.Error()))
+		err := p.writeRetry(msg)
+		if err != nil {
+			p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
 		}
 
 		go func(message wire.Message) {
