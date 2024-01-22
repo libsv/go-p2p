@@ -366,8 +366,10 @@ func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 	// Write header and payload in 1 go.
 	// This w.Write() is locking, so we don't have to worry about concurrent writes.
 	var n int
-	n, err = w.Write(append(hw.Bytes(), payload...))
-	totalBytes += n
+	if hw != nil {
+		n, err = w.Write(append(hw.Bytes(), payload...))
+		totalBytes += n
+	}
 
 	return totalBytes, err
 }
