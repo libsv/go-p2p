@@ -43,6 +43,10 @@ func (p *PeerMock) Network() wire.BitcoinNet {
 	return p.network
 }
 
+func (p *PeerMock) IsHealthy() bool {
+	return true
+}
+
 func (p *PeerMock) Connected() bool {
 	return true
 }
