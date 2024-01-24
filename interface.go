@@ -29,6 +29,7 @@ type PeerI interface {
 	AnnounceBlock(blockHash *chainhash.Hash)
 	RequestBlock(blockHash *chainhash.Hash)
 	Network() wire.BitcoinNet
+	IsHealthy() bool
 }
 
 type PeerHandlerI interface {
