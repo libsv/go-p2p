@@ -6,6 +6,7 @@ package wire
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
@@ -286,14 +287,14 @@ func discardInput(r io.Reader, n uint64) {
 }
 
 // WriteMessageN writes a bitcoin Message to w including the necessary header
-// information and returns the number of bytes written.    This function is the
+// information and returns the number of bytes written. This function is the
 // same as WriteMessage except it also returns the number of bytes written.
 func WriteMessageN(w io.Writer, msg Message, pver uint32, bsvnet BitcoinNet) (int, error) {
 	return WriteMessageWithEncodingN(w, msg, pver, bsvnet, BaseEncoding)
 }
 
 // WriteMessage writes a bitcoin Message to w including the necessary header
-// information.  This function is the same as WriteMessageN except it doesn't
+// information.  This function is the same as WriteMessageN except it
 // doesn't return the number of bytes written.  This function is mainly provided
 // for backwards compatibility with the original API, but it's also useful for
 // callers that don't care about byte counts.
@@ -309,6 +310,10 @@ func WriteMessage(w io.Writer, msg Message, pver uint32, bsvnet BitcoinNet) erro
 // messages.
 func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 	bsvnet BitcoinNet, encoding MessageEncoding) (int, error) {
+
+	if w == nil {
+		return 0, errors.New("writer must not be nil")
+	}
 
 	totalBytes := 0
 
@@ -376,7 +381,7 @@ func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 // from r for the provided protocol version and bitcoin network.  It returns the
 // number of bytes read in addition to the parsed Message and raw bytes which
 // comprise the message.  This function is the same as ReadMessageN except it
-// allows the caller to specify which message encoding is to to consult when
+// allows the caller to specify which message encoding is to consult when
 // decoding wire messages.
 func ReadMessageWithEncodingN(r io.Reader, pver uint32, bsvnet BitcoinNet, enc MessageEncoding) (int, Message, []byte, error) {
 
