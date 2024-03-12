@@ -259,14 +259,14 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 
 	notifyAndReconnect := func(err error, nextTry time.Duration) {
 		if errors.Is(err, io.EOF) {
-			p.logger.Error("Failed to read message: EOF", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to read message: EOF", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		} else {
-			p.logger.Error("Failed to read message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to read message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		}
 
 		err = p.connect()
 		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		}
 	}
 
@@ -290,7 +290,7 @@ func (p *Peer) readHandler() {
 	for {
 		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
 		if err != nil {
-			p.logger.Error("failed to read", slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to read", slog.String(errKey, err.Error()))
 			continue
 		}
 
@@ -491,7 +491,7 @@ func (p *Peer) RequestBlock(blockHash *chainhash.Hash) {
 	if err := p.WriteMsg(dataMsg); err != nil {
 		p.logger.Error("failed to send GETDATA message", slog.String(hashKey, blockHash.String()), slog.String(typeKey, iv.Type.String()), slog.String(errKey, err.Error()))
 	} else {
-		p.logger.Info("Sent GETDATA", slog.String(hashKey, blockHash.String()), slog.String(typeKey, iv.Type.String()))
+		p.logger.Debug("Sent GETDATA", slog.String(hashKey, blockHash.String()), slog.String(typeKey, iv.Type.String()))
 	}
 }
 
@@ -519,7 +519,7 @@ func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 	if err := p.WriteMsg(dataMsg); err != nil {
 		p.logger.Error("failed to send tx data message", slog.String(errKey, err.Error()))
 	} else {
-		p.logger.Info("Sent GETDATA", slog.Int("items", len(batch)))
+		p.logger.Debug("Sent GETDATA", slog.Int("items", len(batch)))
 	}
 }
 
@@ -531,11 +531,11 @@ func (p *Peer) writeRetry(msg wire.Message) error {
 	}
 
 	notifyAndReconnect := func(err error, nextTry time.Duration) {
-		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+		p.logger.Error("Failed to write message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 
 		err = p.connect()
 		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
+			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		}
 	}
 
