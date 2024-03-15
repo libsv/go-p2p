@@ -34,7 +34,7 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
-	retryReadWriteMessageInterval = 10 * time.Second
+	retryReadWriteMessageInterval = 2 * time.Second
 	retryReadWriteMessageAttempts = 5
 
 	pingInterval                   = 2 * time.Minute
@@ -129,6 +129,7 @@ func (p *Peer) initialize() {
 		go func() {
 			for range time.NewTicker(10 * time.Second).C {
 				if !p.Connected() && !p.Connecting() {
+
 					err := p.connect()
 					if err != nil {
 						p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
@@ -286,7 +287,9 @@ func (p *Peer) readHandler() {
 		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
 		if err != nil {
 			p.logger.Error("Failed to read", slog.String(errKey, err.Error()))
-			continue
+			// ensure that peer tries to reconnect
+			p.disconnect()
+			return
 		}
 
 		commandLogger := p.logger.With(slog.String(commandKey, strings.ToUpper(msg.Command())))
