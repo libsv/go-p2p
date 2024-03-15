@@ -122,25 +122,27 @@ func (p *Peer) initialize() {
 		}
 	}()
 
-	if p.incomingConn != nil {
-		p.logger.Info("Incoming connection from peer")
-	} else {
-		// reconnect if disconnected, but only on outgoing connections
-		go func() {
-			for range time.NewTicker(10 * time.Second).C {
-				if !p.Connected() && !p.Connecting() {
-
-					err := p.connect()
-					if err != nil {
-						p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
-					}
-				}
-			}
-		}()
-	}
-
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
 	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
+
+	if p.incomingConn != nil {
+		p.logger.Info("Incoming connection from peer")
+		return
+	}
+
+	// reconnect if disconnected, but only on outgoing connections
+	go func() {
+		for range time.NewTicker(10 * time.Second).C {
+			if p.Connected() || p.Connecting() {
+				continue
+			}
+
+			err := p.connect()
+			if err != nil {
+				p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
+			}
+		}
+	}()
 }
 
 func (p *Peer) disconnect() {
@@ -286,8 +288,9 @@ func (p *Peer) readHandler() {
 	for {
 		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
 		if err != nil {
-			p.logger.Error("Failed to read", slog.String(errKey, err.Error()))
-			// ensure that peer tries to reconnect
+			p.logger.Error("Retrying to read failed", slog.String(errKey, err.Error()))
+
+			// by disconnecting ensure that peer will try to reconnect
 			p.disconnect()
 			return
 		}
