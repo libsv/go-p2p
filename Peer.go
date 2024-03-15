@@ -263,11 +263,6 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 		} else {
 			p.logger.Error("Failed to read message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		}
-
-		err = p.connect()
-		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-		}
 	}
 
 	msg, err := backoff.RetryNotifyWithData(operation, policy, notifyAndReconnect)
@@ -531,12 +526,7 @@ func (p *Peer) writeRetry(msg wire.Message) error {
 	}
 
 	notifyAndReconnect := func(err error, nextTry time.Duration) {
-		p.logger.Error("Failed to write message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-
-		err = p.connect()
-		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-		}
+		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
 	}
 
 	return backoff.RetryNotify(operation, policy, notifyAndReconnect)
