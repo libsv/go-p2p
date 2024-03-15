@@ -85,7 +85,7 @@ func (pm *PeerManager) RequestTransaction(txHash *chainhash.Hash) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {
-		if peer.Connected() {
+		if peer.Connected() && peer.IsHealthy() {
 			sendToPeer = peer
 			break
 		}
@@ -117,7 +117,7 @@ func (pm *PeerManager) RequestBlock(blockHash *chainhash.Hash) PeerI {
 	// send to the first found peer that is connected
 	var sendToPeer PeerI
 	for _, peer := range pm.GetAnnouncedPeers() {
-		if peer.Connected() {
+		if peer.Connected() && peer.IsHealthy() {
 			sendToPeer = peer
 			break
 		}
@@ -140,7 +140,7 @@ func (pm *PeerManager) GetAnnouncedPeers() []PeerI {
 	// Get a list of peers that are connected
 	connectedPeers := make([]PeerI, 0, len(pm.peers))
 	for _, peer := range pm.peers {
-		if peer.Connected() {
+		if peer.Connected() && peer.IsHealthy() {
 			connectedPeers = append(connectedPeers, peer)
 		}
 	}
