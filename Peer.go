@@ -34,8 +34,9 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
-	retryReadWriteMessageInterval = 2 * time.Second
+	retryReadWriteMessageInterval = 1 * time.Second
 	retryReadWriteMessageAttempts = 5
+	reconnectInterval             = 10 * time.Second
 
 	pingInterval                   = 2 * time.Minute
 	connectionHealthTickerDuration = 3 * time.Minute
@@ -132,7 +133,8 @@ func (p *Peer) initialize() {
 
 	// reconnect if disconnected, but only on outgoing connections
 	go func() {
-		for range time.NewTicker(10 * time.Second).C {
+
+		for range time.NewTicker(reconnectInterval).C {
 			if p.Connected() || p.Connecting() {
 				continue
 			}
