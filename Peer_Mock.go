@@ -47,6 +47,8 @@ func (p *PeerMock) IsHealthy() bool {
 	return true
 }
 
+func (p *PeerMock) Shutdown() {}
+
 func (p *PeerMock) Connected() bool {
 	return true
 }

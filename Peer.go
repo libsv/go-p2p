@@ -71,6 +71,7 @@ type Peer struct {
 	dataBatcher        *batcher.Batcher[chainhash.Hash]
 	maximumMessageSize int64
 	isHealthy          bool
+	quitReadHandler    chan struct{}
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -192,7 +193,7 @@ func (p *Peer) connect() error {
 		p.readConn = conn
 	}
 
-	go p.readHandler()
+	p.startReadHandler()
 
 	// write version message to our peer directly and not through the write channel,
 	// write channel is not ready to send message until the VERACK handshake is done
@@ -278,150 +279,163 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 	return msg, nil
 }
 
-func (p *Peer) readHandler() {
-	readConn := p.readConn
+func (p *Peer) startReadHandler() {
+	p.quitReadHandler = make(chan struct{})
 
-	if readConn == nil {
-		p.logger.Error("no connection")
-		return
-	}
+	go func() {
 
-	reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
-	for {
-		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
-		if err != nil {
-			p.logger.Error("Retrying to read failed", slog.String(errKey, err.Error()))
+		readConn := p.readConn
 
-			// by disconnecting ensure that peer will try to reconnect
-			p.disconnect()
+		if readConn == nil {
+			p.logger.Error("no connection")
 			return
 		}
 
-		commandLogger := p.logger.With(slog.String(commandKey, strings.ToUpper(msg.Command())))
+		reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
+		for {
+			select {
+			case <-p.quitReadHandler:
+				return
+			default:
+				msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
+				if err != nil {
+					p.logger.Error("Retrying to read failed", slog.String(errKey, err.Error()))
 
-		// we could check this based on type (switch msg.(type)) but that would not allow
-		// us to override the default behaviour for a specific message type
-		switch msg.Command() {
-		case wire.CmdVersion:
-			commandLogger.Debug(receivedMsg)
-			if p.sentVerAck.Load() {
-				commandLogger.Warn("Received version message after sending verack")
-				continue
-			}
+					p.disconnect()
 
-			verackMsg := wire.NewMsgVerAck()
-			if err = wire.WriteMessage(readConn, verackMsg, wire.ProtocolVersion, p.network); err != nil {
-				commandLogger.Error("failed to write message", slog.String(errKey, err.Error()))
-			}
-			commandLogger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(verackMsg.Command())))
-			p.sentVerAck.Store(true)
+					p.mu.Lock()
+					p.quitReadHandler = nil
+					p.mu.Unlock()
 
-		case wire.CmdPing:
-			commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPing)))
-			p.pingPongAlive <- struct{}{}
+					return
+				}
 
-			pingMsg, ok := msg.(*wire.MsgPing)
-			if !ok {
-				continue
-			}
-			p.writeChan <- wire.NewMsgPong(pingMsg.Nonce)
+				commandLogger := p.logger.With(slog.String(commandKey, strings.ToUpper(msg.Command())))
 
-		case wire.CmdInv:
-			invMsg, ok := msg.(*wire.MsgInv)
-			if !ok {
-				continue
-			}
-			for _, inv := range invMsg.InvList {
-				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
-			}
-
-			go func(invList []*wire.InvVect, routineLogger *slog.Logger) {
-				for _, invVect := range invList {
-					switch invVect.Type {
-					case wire.InvTypeTx:
-						if err = p.peerHandler.HandleTransactionAnnouncement(invVect, p); err != nil {
-							commandLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
-						}
-					case wire.InvTypeBlock:
-						if err = p.peerHandler.HandleBlockAnnouncement(invVect, p); err != nil {
-							commandLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
-						}
+				// we could check this based on type (switch msg.(type)) but that would not allow
+				// us to override the default behaviour for a specific message type
+				switch msg.Command() {
+				case wire.CmdVersion:
+					commandLogger.Debug(receivedMsg)
+					if p.sentVerAck.Load() {
+						commandLogger.Warn("Received version message after sending verack")
+						continue
 					}
+
+					verackMsg := wire.NewMsgVerAck()
+					if err = wire.WriteMessage(readConn, verackMsg, wire.ProtocolVersion, p.network); err != nil {
+						commandLogger.Error("failed to write message", slog.String(errKey, err.Error()))
+					}
+					commandLogger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(verackMsg.Command())))
+					p.sentVerAck.Store(true)
+
+				case wire.CmdPing:
+					commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPing)))
+					p.pingPongAlive <- struct{}{}
+
+					pingMsg, ok := msg.(*wire.MsgPing)
+					if !ok {
+						continue
+					}
+					p.writeChan <- wire.NewMsgPong(pingMsg.Nonce)
+
+				case wire.CmdInv:
+					invMsg, ok := msg.(*wire.MsgInv)
+					if !ok {
+						continue
+					}
+					for _, inv := range invMsg.InvList {
+						commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
+					}
+
+					go func(invList []*wire.InvVect, routineLogger *slog.Logger) {
+						for _, invVect := range invList {
+							switch invVect.Type {
+							case wire.InvTypeTx:
+								if err = p.peerHandler.HandleTransactionAnnouncement(invVect, p); err != nil {
+									commandLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
+								}
+							case wire.InvTypeBlock:
+								if err = p.peerHandler.HandleBlockAnnouncement(invVect, p); err != nil {
+									commandLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
+								}
+							}
+						}
+					}(invMsg.InvList, commandLogger)
+
+				case wire.CmdGetData:
+					dataMsg, ok := msg.(*wire.MsgGetData)
+					if !ok {
+						continue
+					}
+					for _, inv := range dataMsg.InvList {
+						commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
+					}
+					p.handleGetDataMsg(dataMsg, commandLogger)
+
+				case wire.CmdTx:
+					txMsg, ok := msg.(*wire.MsgTx)
+					if !ok {
+						continue
+					}
+					commandLogger.Debug(receivedMsg, slog.String(hashKey, txMsg.TxHash().String()), slog.Int("size", txMsg.SerializeSize()))
+					if err = p.peerHandler.HandleTransaction(txMsg, p); err != nil {
+						commandLogger.Error("Unable to process tx", slog.String(hashKey, txMsg.TxHash().String()), slog.String(errKey, err.Error()))
+					}
+
+				case wire.CmdBlock:
+					msgBlock, ok := msg.(*wire.MsgBlock)
+					if ok {
+						commandLogger.Info(receivedMsg, slog.String(hashKey, msgBlock.Header.BlockHash().String()))
+
+						err = p.peerHandler.HandleBlock(msgBlock, p)
+						if err != nil {
+							commandLogger.Error("Unable to process block", slog.String(hashKey, msgBlock.Header.BlockHash().String()), slog.String(errKey, err.Error()))
+						}
+						continue
+					}
+
+					// Please note that this is the BlockMessage, not the wire.MsgBlock
+					blockMsg, ok := msg.(*BlockMessage)
+					if !ok {
+						commandLogger.Error("Unable to cast block message, calling with generic wire.Message")
+						err = p.peerHandler.HandleBlock(msg, p)
+						if err != nil {
+							commandLogger.Error("Unable to process block message", slog.String(errKey, err.Error()))
+						}
+						continue
+					}
+
+					commandLogger.Info(receivedMsg, slog.String(hashKey, blockMsg.Header.BlockHash().String()))
+
+					err = p.peerHandler.HandleBlock(blockMsg, p)
+					if err != nil {
+						commandLogger.Error("Unable to process block", slog.String(hashKey, blockMsg.Header.BlockHash().String()), slog.String(errKey, err.Error()))
+					}
+
+				case wire.CmdReject:
+					rejMsg, ok := msg.(*wire.MsgReject)
+					if !ok {
+						continue
+					}
+					if err = p.peerHandler.HandleTransactionRejection(rejMsg, p); err != nil {
+						commandLogger.Error("Unable to process block", slog.String(hashKey, rejMsg.Hash.String()), slog.String(errKey, err.Error()))
+					}
+
+				case wire.CmdVerAck:
+					commandLogger.Debug(receivedMsg)
+					p.receivedVerAck.Store(true)
+
+				case wire.CmdPong:
+					commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPong)))
+					p.pingPongAlive <- struct{}{}
+
+				default:
+					commandLogger.Debug("command ignored")
 				}
-			}(invMsg.InvList, commandLogger)
-
-		case wire.CmdGetData:
-			dataMsg, ok := msg.(*wire.MsgGetData)
-			if !ok {
-				continue
 			}
-			for _, inv := range dataMsg.InvList {
-				commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
-			}
-			p.handleGetDataMsg(dataMsg, commandLogger)
-
-		case wire.CmdTx:
-			txMsg, ok := msg.(*wire.MsgTx)
-			if !ok {
-				continue
-			}
-			commandLogger.Debug(receivedMsg, slog.String(hashKey, txMsg.TxHash().String()), slog.Int("size", txMsg.SerializeSize()))
-			if err = p.peerHandler.HandleTransaction(txMsg, p); err != nil {
-				commandLogger.Error("Unable to process tx", slog.String(hashKey, txMsg.TxHash().String()), slog.String(errKey, err.Error()))
-			}
-
-		case wire.CmdBlock:
-			msgBlock, ok := msg.(*wire.MsgBlock)
-			if ok {
-				commandLogger.Info(receivedMsg, slog.String(hashKey, msgBlock.Header.BlockHash().String()))
-
-				err = p.peerHandler.HandleBlock(msgBlock, p)
-				if err != nil {
-					commandLogger.Error("Unable to process block", slog.String(hashKey, msgBlock.Header.BlockHash().String()), slog.String(errKey, err.Error()))
-				}
-				continue
-			}
-
-			// Please note that this is the BlockMessage, not the wire.MsgBlock
-			blockMsg, ok := msg.(*BlockMessage)
-			if !ok {
-				commandLogger.Error("Unable to cast block message, calling with generic wire.Message")
-				err = p.peerHandler.HandleBlock(msg, p)
-				if err != nil {
-					commandLogger.Error("Unable to process block message", slog.String(errKey, err.Error()))
-				}
-				continue
-			}
-
-			commandLogger.Info(receivedMsg, slog.String(hashKey, blockMsg.Header.BlockHash().String()))
-
-			err = p.peerHandler.HandleBlock(blockMsg, p)
-			if err != nil {
-				commandLogger.Error("Unable to process block", slog.String(hashKey, blockMsg.Header.BlockHash().String()), slog.String(errKey, err.Error()))
-			}
-
-		case wire.CmdReject:
-			rejMsg, ok := msg.(*wire.MsgReject)
-			if !ok {
-				continue
-			}
-			if err = p.peerHandler.HandleTransactionRejection(rejMsg, p); err != nil {
-				commandLogger.Error("Unable to process block", slog.String(hashKey, rejMsg.Hash.String()), slog.String(errKey, err.Error()))
-			}
-
-		case wire.CmdVerAck:
-			commandLogger.Debug(receivedMsg)
-			p.receivedVerAck.Store(true)
-
-		case wire.CmdPong:
-			commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPong)))
-			p.pingPongAlive <- struct{}{}
-
-		default:
-
-			commandLogger.Debug("command ignored")
 		}
-	}
+	}()
 }
 
 func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
@@ -664,4 +678,12 @@ func (p *Peer) IsHealthy() bool {
 	defer p.mu.Unlock()
 
 	return p.isHealthy
+}
+
+func (p *Peer) Shutdown() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.quitReadHandler != nil {
+		p.quitReadHandler <- struct{}{}
+	}
 }

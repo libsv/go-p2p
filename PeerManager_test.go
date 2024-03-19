@@ -34,6 +34,7 @@ func TestNewPeerManager(t *testing.T) {
 		peerHandler := NewMockPeerHandler()
 
 		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
+		defer peer.Shutdown()
 		require.NoError(t, err)
 
 		err = pm.AddPeer(peer)
@@ -57,6 +58,7 @@ func TestNewPeerManager(t *testing.T) {
 		for _, peerAddress := range peers {
 			peer, _ := NewPeer(logger, peerAddress, peerHandler, wire.TestNet)
 			_ = pm.AddPeer(peer)
+			defer peer.Shutdown()
 		}
 
 		assert.Len(t, pm.GetPeers(), 4)
@@ -73,6 +75,8 @@ func TestAnnounceNewTransaction(t *testing.T) {
 
 		peer, _ := NewPeerMock("localhost:18333", peerHandler, wire.TestNet)
 		err := pm.AddPeer(peer)
+		defer peer.Shutdown()
+
 		require.NoError(t, err)
 
 		pm.AnnounceTransaction(tx1Hash, nil)
