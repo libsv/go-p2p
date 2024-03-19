@@ -52,26 +52,27 @@ type Block struct {
 }
 
 type Peer struct {
-	address            string
-	network            wire.BitcoinNet
-	mu                 sync.RWMutex
-	readConn           net.Conn
-	writeConn          net.Conn
-	incomingConn       net.Conn
-	dial               func(network, address string) (net.Conn, error)
-	peerHandler        PeerHandlerI
-	writeChan          chan wire.Message
-	quit               chan struct{}
-	pingPongAlive      chan struct{}
-	logger             *slog.Logger
-	sentVerAck         atomic.Bool
-	receivedVerAck     atomic.Bool
-	batchDelay         time.Duration
-	invBatcher         *batcher.Batcher[chainhash.Hash]
-	dataBatcher        *batcher.Batcher[chainhash.Hash]
-	maximumMessageSize int64
-	isHealthy          bool
-	quitReadHandler    chan struct{}
+	address                 string
+	network                 wire.BitcoinNet
+	mu                      sync.RWMutex
+	readConn                net.Conn
+	writeConn               net.Conn
+	incomingConn            net.Conn
+	dial                    func(network, address string) (net.Conn, error)
+	peerHandler             PeerHandlerI
+	writeChan               chan wire.Message
+	quit                    chan struct{}
+	pingPongAlive           chan struct{}
+	logger                  *slog.Logger
+	sentVerAck              atomic.Bool
+	receivedVerAck          atomic.Bool
+	batchDelay              time.Duration
+	invBatcher              *batcher.Batcher[chainhash.Hash]
+	dataBatcher             *batcher.Batcher[chainhash.Hash]
+	maximumMessageSize      int64
+	isHealthy               bool
+	quitReadHandler         chan struct{}
+	quitReadHandlerComplete chan struct{}
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -281,8 +282,10 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 
 func (p *Peer) startReadHandler() {
 	p.quitReadHandler = make(chan struct{}, 10)
+	p.quitReadHandlerComplete = make(chan struct{}, 10)
 
-	p.logger.Info("starting read handler")
+	p.logger.Info("Starting read handler")
+
 	go func() {
 
 		readConn := p.readConn
@@ -291,6 +294,13 @@ func (p *Peer) startReadHandler() {
 			p.logger.Error("no connection")
 			return
 		}
+
+		go func() {
+			if p.quitReadHandlerComplete != nil {
+				p.quitReadHandlerComplete <- struct{}{}
+			}
+			p.logger.Info("Shutting down read handler")
+		}()
 
 		reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
 		for {
@@ -306,6 +316,7 @@ func (p *Peer) startReadHandler() {
 
 					p.mu.Lock()
 					p.quitReadHandler = nil
+					p.quitReadHandlerComplete = nil
 					p.mu.Unlock()
 
 					return
@@ -686,5 +697,6 @@ func (p *Peer) Shutdown() {
 	defer p.mu.Unlock()
 	if p.quitReadHandler != nil {
 		p.quitReadHandler <- struct{}{}
+		<-p.quitReadHandlerComplete
 	}
 }

@@ -92,7 +92,7 @@ func TestNewPeer(t *testing.T) {
 
 		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
 		require.NoError(t, err)
-		defer peer.Shutdown()
+
 		time.Sleep(5 * time.Second)
 
 		require.True(t, peer.Connected())
@@ -111,5 +111,7 @@ func TestNewPeer(t *testing.T) {
 		// wait longer than the reconnect interval and expect that peer has re-established connection
 		time.Sleep(reconnectInterval + 2*time.Second)
 		require.True(t, peer.Connected())
+
+		peer.Shutdown()
 	})
 }
