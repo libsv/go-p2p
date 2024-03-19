@@ -280,8 +280,9 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 }
 
 func (p *Peer) startReadHandler() {
-	p.quitReadHandler = make(chan struct{})
+	p.quitReadHandler = make(chan struct{}, 10)
 
+	p.logger.Info("starting read handler")
 	go func() {
 
 		readConn := p.readConn

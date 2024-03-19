@@ -92,7 +92,7 @@ func TestNewPeer(t *testing.T) {
 
 		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
 		require.NoError(t, err)
-
+		defer peer.Shutdown()
 		time.Sleep(5 * time.Second)
 
 		require.True(t, peer.Connected())
