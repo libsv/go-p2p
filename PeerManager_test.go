@@ -34,16 +34,16 @@ func TestNewPeerManager(t *testing.T) {
 		peerHandler := NewMockPeerHandler()
 
 		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
-		defer peer.Shutdown()
 		require.NoError(t, err)
 
 		err = pm.AddPeer(peer)
 		require.NoError(t, err)
 		assert.Len(t, pm.GetPeers(), 1)
+		peer.Shutdown()
 	})
 
 	t.Run("1 peer - de dup", func(t *testing.T) {
-		peers := []string{
+		peerAddresses := []string{
 			"localhost:18333",
 			"localhost:18333",
 			"localhost:18333",
@@ -55,13 +55,18 @@ func TestNewPeerManager(t *testing.T) {
 
 		peerHandler := NewMockPeerHandler()
 
-		for _, peerAddress := range peers {
+		peers := make([]*Peer, len(peerAddresses))
+		for i, peerAddress := range peerAddresses {
 			peer, _ := NewPeer(logger, peerAddress, peerHandler, wire.TestNet)
 			_ = pm.AddPeer(peer)
-			defer peer.Shutdown()
+			peers[i] = peer
 		}
 
 		assert.Len(t, pm.GetPeers(), 4)
+
+		for _, peer := range peers {
+			peer.Shutdown()
+		}
 	})
 }
 
@@ -75,7 +80,6 @@ func TestAnnounceNewTransaction(t *testing.T) {
 
 		peer, _ := NewPeerMock("localhost:18333", peerHandler, wire.TestNet)
 		err := pm.AddPeer(peer)
-		defer peer.Shutdown()
 
 		require.NoError(t, err)
 
@@ -87,6 +91,8 @@ func TestAnnounceNewTransaction(t *testing.T) {
 		announcements := peer.GetAnnouncements()
 		require.Len(t, announcements, 1)
 		assert.Equal(t, tx1Hash, announcements[0])
+
+		peer.Shutdown()
 	})
 
 	t.Run("announce tx - multiple peers", func(t *testing.T) {
@@ -122,10 +128,4 @@ func TestAnnounceNewTransaction(t *testing.T) {
 		}
 		assert.GreaterOrEqual(t, peersMessaged, len(peers)/2)
 	})
-}
-
-func TestPeerManager_addPeer(t *testing.T) {
-}
-
-func TestPeerManager_sendInvBatch(t *testing.T) {
 }
