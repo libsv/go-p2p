@@ -73,6 +73,7 @@ type Peer struct {
 	maximumMessageSize int64
 	isHealthy          bool
 	cancelReadHandler  context.CancelFunc
+	//cancelReadHandlerWaitGroup *sync.WaitGroup
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -295,10 +296,19 @@ func (p *Peer) startReadHandler() {
 
 	p.logger.Info("Starting read handler")
 
+	//p.cancelReadHandlerWaitGroup = &sync.WaitGroup{}
+
 	go func(cancelCtx context.Context) {
 		defer func() {
+			//p.mu.Lock()
+			//defer p.mu.Unlock()
 			p.logger.Info("Shutting down read handler")
+			//p.cancelReadHandlerWaitGroup.Done()
 		}()
+
+		//p.mu.Lock()
+		//p.cancelReadHandlerWaitGroup.Add(1)
+		//p.mu.Unlock()
 
 		readConn := p.readConn
 		var msg wire.Message
@@ -707,5 +717,6 @@ func (p *Peer) IsHealthy() bool {
 func (p *Peer) Shutdown() {
 	if p.cancelReadHandler != nil {
 		p.cancelReadHandler()
+		//p.cancelReadHandlerWaitGroup.Wait()
 	}
 }

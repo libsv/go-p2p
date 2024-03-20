@@ -39,7 +39,7 @@ func TestNewPeerManager(t *testing.T) {
 		err = pm.AddPeer(peer)
 		require.NoError(t, err)
 		assert.Len(t, pm.GetPeers(), 1)
-		peer.Shutdown()
+		//peer.Shutdown()
 	})
 
 	t.Run("1 peer - de dup", func(t *testing.T) {
@@ -64,9 +64,9 @@ func TestNewPeerManager(t *testing.T) {
 
 		assert.Len(t, pm.GetPeers(), 4)
 
-		for _, peer := range peers {
-			peer.Shutdown()
-		}
+		//for _, peer := range peers {
+		//	peer.Shutdown()
+		//}
 	})
 }
 
@@ -92,7 +92,7 @@ func TestAnnounceNewTransaction(t *testing.T) {
 		require.Len(t, announcements, 1)
 		assert.Equal(t, tx1Hash, announcements[0])
 
-		peer.Shutdown()
+		//peer.Shutdown()
 	})
 
 	t.Run("announce tx - multiple peers", func(t *testing.T) {
