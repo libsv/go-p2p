@@ -112,6 +112,8 @@ func TestNewPeer(t *testing.T) {
 		time.Sleep(reconnectInterval + 2*time.Second)
 		require.True(t, peer.Connected())
 
+		//err = dockerClient.StopContainer(resource.Container.ID, 10)
+		require.NoError(t, err)
 		peer.Shutdown()
 	})
 }
