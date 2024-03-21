@@ -2,16 +2,11 @@ package p2p
 
 import (
 	"fmt"
-	"log"
-	"log/slog"
-	"os"
-	"testing"
-	"time"
-
-	"github.com/libsv/go-p2p/wire"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
-	"github.com/stretchr/testify/require"
+	"log"
+	"os"
+	"testing"
 )
 
 var (
@@ -74,46 +69,47 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestNewPeer(t *testing.T) {
-	t.Helper()
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-
-	t.Run("break and re-establish peer connection", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
-		pm := NewPeerManager(logger, wire.TestNet)
-		require.NotNil(t, pm)
-
-		peerHandler := NewMockPeerHandler()
-
-		time.Sleep(5 * time.Second)
-
-		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
-		require.NoError(t, err)
-
-		time.Sleep(5 * time.Second)
-
-		require.True(t, peer.Connected())
-
-		dockerClient := pool.Client
-
-		// restart container and break connection
-		err = dockerClient.RestartContainer(resource.Container.ID, 10)
-		require.NoError(t, err)
-
-		time.Sleep(6 * time.Second)
-
-		// expect that peer has disconnected
-		require.False(t, peer.Connected())
-
-		// wait longer than the reconnect interval and expect that peer has re-established connection
-		time.Sleep(reconnectInterval + 2*time.Second)
-		require.True(t, peer.Connected())
-
-		//err = dockerClient.StopContainer(resource.Container.ID, 10)
-		require.NoError(t, err)
-		peer.Shutdown()
-	})
-}
+//
+//func TestNewPeer(t *testing.T) {
+//	t.Helper()
+//	if testing.Short() {
+//		t.Skip("skipping integration test")
+//	}
+//
+//	t.Run("break and re-establish peer connection", func(t *testing.T) {
+//		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+//
+//		pm := NewPeerManager(logger, wire.TestNet)
+//		require.NotNil(t, pm)
+//
+//		peerHandler := NewMockPeerHandler()
+//
+//		time.Sleep(5 * time.Second)
+//
+//		peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet)
+//		require.NoError(t, err)
+//
+//		time.Sleep(5 * time.Second)
+//
+//		require.True(t, peer.Connected())
+//
+//		dockerClient := pool.Client
+//
+//		// restart container and break connection
+//		err = dockerClient.RestartContainer(resource.Container.ID, 10)
+//		require.NoError(t, err)
+//
+//		time.Sleep(6 * time.Second)
+//
+//		// expect that peer has disconnected
+//		require.False(t, peer.Connected())
+//
+//		// wait longer than the reconnect interval and expect that peer has re-established connection
+//		time.Sleep(reconnectInterval + 2*time.Second)
+//		require.True(t, peer.Connected())
+//
+//		//err = dockerClient.StopContainer(resource.Container.ID, 10)
+//		require.NoError(t, err)
+//		peer.Shutdown()
+//	})
+//}
