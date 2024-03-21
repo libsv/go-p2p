@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"bufio"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -71,6 +72,7 @@ type Peer struct {
 	dataBatcher        *batcher.Batcher[chainhash.Hash]
 	maximumMessageSize int64
 	isHealthy          bool
+	cancelReadHandler  context.CancelFunc
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -252,8 +254,17 @@ func (p *Peer) String() string {
 	return p.address
 }
 
-func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire.Message, error) {
+func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire.Message, error) {
 	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
+
+	//ctx, cancel := context.WithCancel(context.Background())
+	//ctx := context.Background()
+	policyContext := backoff.WithContext(policy, ctx)
+
+	//p.mu.Lock()
+	//p.cancelReadHandler = cancel
+	//p.mu.Unlock()
+
 	operation := func() (wire.Message, error) {
 		msg, _, err := wire.ReadMessage(r, pver, bsvnet)
 		if err != nil {
@@ -270,7 +281,7 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 		}
 	}
 
-	msg, err := backoff.RetryNotifyWithData(operation, policy, notifyAndReconnect)
+	msg, err := backoff.RetryNotifyWithData(operation, policyContext, notifyAndReconnect)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +292,11 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 func (p *Peer) readHandler() {
 	readConn := p.readConn
 
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelReadHandler = cancel
+
+	p.logger.Info("Starting read handler")
+
 	if readConn == nil {
 		p.logger.Error("no connection")
 		return
@@ -288,7 +304,7 @@ func (p *Peer) readHandler() {
 
 	reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
 	for {
-		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
+		msg, err := p.readRetry(ctx, reader, wire.ProtocolVersion, p.network)
 		if err != nil {
 			p.disconnect()
 
@@ -663,4 +679,11 @@ func (p *Peer) IsHealthy() bool {
 	defer p.mu.Unlock()
 
 	return p.isHealthy
+}
+
+func (p *Peer) Shutdown() {
+	if p.cancelReadHandler != nil {
+		p.cancelReadHandler()
+		//p.cancelReadHandlerWaitGroup.Wait()
+	}
 }
