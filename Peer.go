@@ -533,12 +533,7 @@ func (p *Peer) writeRetry(msg wire.Message) error {
 	}
 
 	notifyAndReconnect := func(err error, nextTry time.Duration) {
-		p.logger.Error("Failed to write message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-
-		err = p.connect()
-		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-		}
+		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
 	}
 
 	return backoff.RetryNotify(operation, policy, notifyAndReconnect)
