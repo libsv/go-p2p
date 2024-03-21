@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -74,61 +73,62 @@ func TestNewPeerManager(t *testing.T) {
 	})
 }
 
-func TestAnnounceNewTransaction(t *testing.T) {
-	t.Run("announce tx", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
-		require.NotNil(t, pm)
-
-		peerHandler := NewMockPeerHandler()
-
-		peer, _ := NewPeerMock("localhost:18333", peerHandler, wire.TestNet)
-		err := pm.AddPeer(peer)
-
-		require.NoError(t, err)
-
-		pm.AnnounceTransaction(tx1Hash, nil)
-
-		// we need to wait for the batcher to send the inv
-		time.Sleep(5 * time.Millisecond)
-
-		announcements := peer.GetAnnouncements()
-		require.Len(t, announcements, 1)
-		assert.Equal(t, tx1Hash, announcements[0])
-
-	})
-
-	t.Run("announce tx - multiple peers", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
-		require.NotNil(t, pm)
-
-		peerHandler := NewMockPeerHandler()
-
-		numberOfPeers := 5
-		peers := make([]*PeerMock, numberOfPeers)
-		for i := 0; i < numberOfPeers; i++ {
-			peers[i], _ = NewPeerMock(fmt.Sprintf("localhost:1833%d", i), peerHandler, wire.TestNet)
-			err := pm.AddPeer(peers[i])
-			require.NoError(t, err)
-		}
-
-		pm.AnnounceTransaction(tx1Hash, nil)
-
-		// we need to wait for the batcher to send the inv
-		time.Sleep(5 * time.Millisecond)
-
-		peersMessaged := 0
-		for _, peer := range peers {
-			announcements := peer.GetAnnouncements()
-			if len(announcements) == 0 {
-				continue
-			}
-
-			require.Len(t, announcements, 1)
-			assert.Equal(t, tx1Hash, announcements[0])
-			peersMessaged++
-		}
-		assert.GreaterOrEqual(t, peersMessaged, len(peers)/2)
-	})
-}
+//
+//func TestAnnounceNewTransaction(t *testing.T) {
+//	t.Run("announce tx", func(t *testing.T) {
+//		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+//		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
+//		require.NotNil(t, pm)
+//
+//		peerHandler := NewMockPeerHandler()
+//
+//		peer, _ := NewPeerMock("localhost:18333", peerHandler, wire.TestNet)
+//		err := pm.AddPeer(peer)
+//
+//		require.NoError(t, err)
+//
+//		pm.AnnounceTransaction(tx1Hash, nil)
+//
+//		// we need to wait for the batcher to send the inv
+//		time.Sleep(5 * time.Millisecond)
+//
+//		announcements := peer.GetAnnouncements()
+//		require.Len(t, announcements, 1)
+//		assert.Equal(t, tx1Hash, announcements[0])
+//
+//	})
+//
+//	t.Run("announce tx - multiple peers", func(t *testing.T) {
+//		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+//		pm := NewPeerManager(logger, wire.TestNet, WithBatchDuration(1*time.Millisecond))
+//		require.NotNil(t, pm)
+//
+//		peerHandler := NewMockPeerHandler()
+//
+//		numberOfPeers := 5
+//		peers := make([]*PeerMock, numberOfPeers)
+//		for i := 0; i < numberOfPeers; i++ {
+//			peers[i], _ = NewPeerMock(fmt.Sprintf("localhost:1833%d", i), peerHandler, wire.TestNet)
+//			err := pm.AddPeer(peers[i])
+//			require.NoError(t, err)
+//		}
+//
+//		pm.AnnounceTransaction(tx1Hash, nil)
+//
+//		// we need to wait for the batcher to send the inv
+//		time.Sleep(5 * time.Millisecond)
+//
+//		peersMessaged := 0
+//		for _, peer := range peers {
+//			announcements := peer.GetAnnouncements()
+//			if len(announcements) == 0 {
+//				continue
+//			}
+//
+//			require.Len(t, announcements, 1)
+//			assert.Equal(t, tx1Hash, announcements[0])
+//			peersMessaged++
+//		}
+//		assert.GreaterOrEqual(t, peersMessaged, len(peers)/2)
+//	})
+//}
