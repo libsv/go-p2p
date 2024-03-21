@@ -34,8 +34,9 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
-	retryReadWriteMessageInterval = 10 * time.Second
+	retryReadWriteMessageInterval = 1 * time.Second
 	retryReadWriteMessageAttempts = 5
+	reconnectInterval             = 10 * time.Second
 
 	pingInterval                   = 2 * time.Minute
 	connectionHealthTickerDuration = 3 * time.Minute
@@ -122,24 +123,28 @@ func (p *Peer) initialize() {
 		}
 	}()
 
-	if p.incomingConn != nil {
-		p.logger.Info("Incoming connection from peer")
-	} else {
-		// reconnect if disconnected, but only on outgoing connections
-		go func() {
-			for range time.NewTicker(10 * time.Second).C {
-				if !p.Connected() && !p.Connecting() {
-					err := p.connect()
-					if err != nil {
-						p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
-					}
-				}
-			}
-		}()
-	}
-
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
 	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
+
+	if p.incomingConn != nil {
+		p.logger.Info("Incoming connection from peer")
+		return
+	}
+
+	// reconnect if disconnected, but only on outgoing connections
+	go func() {
+
+		for range time.NewTicker(reconnectInterval).C {
+			if p.Connected() || p.Connecting() {
+				continue
+			}
+
+			err := p.connect()
+			if err != nil {
+				p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
+			}
+		}
+	}()
 }
 
 func (p *Peer) disconnect() {
@@ -263,11 +268,6 @@ func (p *Peer) readRetry(r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire
 		} else {
 			p.logger.Error("Failed to read message", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		}
-
-		err = p.connect()
-		if err != nil {
-			p.logger.Error("Failed to reconnect", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
-		}
 	}
 
 	msg, err := backoff.RetryNotifyWithData(operation, policy, notifyAndReconnect)
@@ -290,8 +290,10 @@ func (p *Peer) readHandler() {
 	for {
 		msg, err := p.readRetry(reader, wire.ProtocolVersion, p.network)
 		if err != nil {
+			p.disconnect()
+
 			p.logger.Error("Failed to read", slog.String(errKey, err.Error()))
-			continue
+			return
 		}
 
 		commandLogger := p.logger.With(slog.String(commandKey, strings.ToUpper(msg.Command())))
