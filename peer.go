@@ -73,6 +73,7 @@ type Peer struct {
 	maximumMessageSize int64
 	isHealthy          bool
 	cancelReadHandler  context.CancelFunc
+	cancelWriteHandler context.CancelFunc
 	userAgentName      *string
 	userAgentVersion   *string
 }
@@ -115,13 +116,16 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 func (p *Peer) initialize() {
 
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelWriteHandler = cancel
+
 	go p.monitorConnectionHealth()
 	go p.pingHandler()
 	for i := 0; i < 10; i++ {
 		// start 10 workers that will write to the peer
 		// locking is done in the net.write in the wire/message handler
 		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
-		go p.writeChannelHandler()
+		p.startWriteChannelHandler(ctx)
 	}
 
 	go func() {
@@ -559,8 +563,10 @@ func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 	}
 }
 
-func (p *Peer) writeRetry(msg wire.Message) error {
+func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
+
+	policyContext := backoff.WithContext(policy, ctx)
 
 	operation := func() error {
 		return wire.WriteMessage(p.writeConn, msg, wire.ProtocolVersion, p.network)
@@ -570,52 +576,70 @@ func (p *Peer) writeRetry(msg wire.Message) error {
 		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
 	}
 
-	return backoff.RetryNotify(operation, policy, notifyAndReconnect)
+	return backoff.RetryNotify(operation, policyContext, notifyAndReconnect)
 }
 
-func (p *Peer) writeChannelHandler() {
-	for msg := range p.writeChan {
-		// wait for the write connection to be ready
+func (p *Peer) startWriteChannelHandler(ctx context.Context) {
+	p.logger.Info("Starting write handler")
+
+	go func(cancelCtx context.Context) {
+		defer func() {
+			p.logger.Info("Shutting down write handler")
+		}()
+
 		for {
-			p.mu.RLock()
-			writeConn := p.writeConn
-			p.mu.RUnlock()
+			select {
+			case <-cancelCtx.Done():
+				return
+			case msg := <-p.writeChan:
 
-			if writeConn != nil {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		err := p.writeRetry(msg)
-		if err != nil {
-			p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
-		}
+				for {
+					p.mu.RLock()
+					writeConn := p.writeConn
+					p.mu.RUnlock()
 
-		go func(message wire.Message) {
-			if message.Command() == wire.CmdTx {
-				msgTx, ok := message.(*wire.MsgTx)
-				if !ok {
-					return
+					if writeConn != nil {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
 				}
-				hash := msgTx.TxHash()
-				if err := p.peerHandler.HandleTransactionSent(msgTx, p); err != nil {
-					p.logger.Error("Unable to process tx", slog.String(hashKey, hash.String()), slog.String(errKey, err.Error()))
-				}
-			}
+				err := p.writeRetry(cancelCtx, msg)
+				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						p.logger.Info("Retrying to write cancelled")
+						return
+					}
 
-			switch m := message.(type) {
-			case *wire.MsgTx:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.TxHash().String()), slog.String(typeKey, "tx"))
-			case *wire.MsgBlock:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.BlockHash().String()), slog.String(typeKey, "block"))
-			case *wire.MsgGetData:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.InvList[0].Hash.String()), slog.String(typeKey, "getdata"))
-			case *wire.MsgInv:
-			default:
-				p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(typeKey, "unknown"))
+					p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
+				}
+
+				go func(message wire.Message) {
+					if message.Command() == wire.CmdTx {
+						msgTx, ok := message.(*wire.MsgTx)
+						if !ok {
+							return
+						}
+						hash := msgTx.TxHash()
+						if err := p.peerHandler.HandleTransactionSent(msgTx, p); err != nil {
+							p.logger.Error("Unable to process tx", slog.String(hashKey, hash.String()), slog.String(errKey, err.Error()))
+						}
+					}
+
+					switch m := message.(type) {
+					case *wire.MsgTx:
+						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.TxHash().String()), slog.String(typeKey, "tx"))
+					case *wire.MsgBlock:
+						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.BlockHash().String()), slog.String(typeKey, "block"))
+					case *wire.MsgGetData:
+						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.InvList[0].Hash.String()), slog.String(typeKey, "getdata"))
+					case *wire.MsgInv:
+					default:
+						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(typeKey, "unknown"))
+					}
+				}(msg)
 			}
-		}(msg)
-	}
+		}
+	}(ctx)
 }
 
 func (p *Peer) versionMessage(address string) *wire.MsgVersion {
@@ -709,5 +733,9 @@ func (p *Peer) IsHealthy() bool {
 func (p *Peer) Shutdown() {
 	if p.cancelReadHandler != nil {
 		p.cancelReadHandler()
+	}
+
+	if p.cancelWriteHandler != nil {
+		p.cancelWriteHandler()
 	}
 }
