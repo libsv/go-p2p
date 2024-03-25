@@ -30,3 +30,10 @@ func WithMaximumMessageSize(maximumMessageSize int64) PeerOptions {
 		p.maximumMessageSize = maximumMessageSize
 	}
 }
+
+func WithUserAgent(userAgentName string, userAgentVersion string) PeerOptions {
+	return func(p *Peer) {
+		p.userAgentName = &userAgentName
+		p.userAgentVersion = &userAgentVersion
+	}
+}
