@@ -646,7 +646,9 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 
 	if p.userAgentName != nil && p.userAgentVersion != nil {
 		err = msg.AddUserAgent(*p.userAgentName, *p.userAgentVersion)
-		p.logger.Error("Failed to add user agent", slog.String(errKey, err.Error()))
+		if err != nil {
+			p.logger.Error("Failed to add user agent", slog.String(errKey, err.Error()))
+		}
 	}
 
 	return msg
