@@ -100,8 +100,12 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		batchDelay:         defaultBatchDelayMilliseconds * time.Millisecond,
 	}
 
+	var err error
 	for _, option := range options {
-		option(p)
+		err = option(p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply option, %v", err)
+		}
 	}
 
 	p.initialize()

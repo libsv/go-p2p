@@ -94,7 +94,7 @@ func TestNewPeer(t *testing.T) {
 
 		time.Sleep(5 * time.Second)
 
-		peer, err := NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet)
+		peer, err := NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet, WithUserAgent("agent", "0.0.1"))
 		require.NoError(t, err)
 
 		time.Sleep(5 * time.Second)
