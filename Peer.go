@@ -100,8 +100,12 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		batchDelay:         defaultBatchDelayMilliseconds * time.Millisecond,
 	}
 
+	var err error
 	for _, option := range options {
-		option(p)
+		err = option(p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply option, %v", err)
+		}
 	}
 
 	p.initialize()
@@ -642,7 +646,9 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 
 	if p.userAgentName != nil && p.userAgentVersion != nil {
 		err = msg.AddUserAgent(*p.userAgentName, *p.userAgentVersion)
-		p.logger.Error("Failed to add user agent", slog.String(errKey, err.Error()))
+		if err != nil {
+			p.logger.Error("Failed to add user agent", slog.String(errKey, err.Error()))
+		}
 	}
 
 	return msg
