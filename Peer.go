@@ -73,6 +73,8 @@ type Peer struct {
 	maximumMessageSize int64
 	isHealthy          bool
 	cancelReadHandler  context.CancelFunc
+	userAgentName      *string
+	userAgentVersion   *string
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -637,6 +639,11 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 	}
 
 	msg := wire.NewMsgVersion(me, you, nonce, lastBlock)
+
+	if p.userAgentName != nil && p.userAgentVersion != nil {
+		err = msg.AddUserAgent(*p.userAgentName, *p.userAgentVersion)
+		p.logger.Error("Failed to add user agent", slog.String(errKey, err.Error()))
+	}
 
 	return msg
 }
