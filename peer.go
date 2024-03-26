@@ -277,7 +277,7 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 		return msg, nil
 	}
 
-	notifyAndReconnect := func(err error, nextTry time.Duration) {
+	notify := func(err error, nextTry time.Duration) {
 		if errors.Is(err, io.EOF) {
 			p.logger.Error("Failed to read message: EOF", slog.String("next try", nextTry.String()), slog.String(errKey, err.Error()))
 		} else {
@@ -285,7 +285,7 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 		}
 	}
 
-	msg, err := backoff.RetryNotifyWithData(operation, policyContext, notifyAndReconnect)
+	msg, err := backoff.RetryNotifyWithData(operation, policyContext, notify)
 	if err != nil {
 		return nil, err
 	}
@@ -572,11 +572,11 @@ func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 		return wire.WriteMessage(p.writeConn, msg, wire.ProtocolVersion, p.network)
 	}
 
-	notifyAndReconnect := func(err error, nextTry time.Duration) {
+	notify := func(err error, nextTry time.Duration) {
 		p.logger.Error("Failed to write message", slog.Duration("next try", nextTry), slog.String(errKey, err.Error()))
 	}
 
-	return backoff.RetryNotify(operation, policyContext, notifyAndReconnect)
+	return backoff.RetryNotify(operation, policyContext, notify)
 }
 
 func (p *Peer) startWriteChannelHandler(ctx context.Context) {
