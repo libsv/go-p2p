@@ -1,7 +1,9 @@
 package p2p
 
 import (
+	"encoding/hex"
 	"fmt"
+	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"log"
 	"log/slog"
 	"os"
@@ -18,10 +20,17 @@ const (
 	p2pPortBinding = "18335"
 )
 
+//go:generate moq -out ./peer_handler_gen_mock.go . PeerHandlerI
+
 var (
 	pool     *dockertest.Pool
 	resource *dockertest.Resource
 	pwd      string
+
+	TX1            = "b042f298deabcebbf15355aa3a13c7d7cfe96c44ac4f492735f936f8e50d06f6"
+	TX1Hash, _     = chainhash.NewHashFromStr(TX1)
+	TX1Raw         = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff1a0386c40b2f7461616c2e636f6d2f00cf47ad9c7af83836000000ffffffff0117564425000000001976a914522cf9e7626d9bd8729e5a1398ece40dad1b6a2f88ac00000000"
+	TX1RawBytes, _ = hex.DecodeString(TX1Raw)
 )
 
 func TestMain(m *testing.M) {
@@ -87,9 +96,6 @@ func TestNewPeer(t *testing.T) {
 	t.Run("break and re-establish peer connection", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-		pm := NewPeerManager(logger, wire.TestNet)
-		require.NotNil(t, pm)
-
 		peerHandler := NewMockPeerHandler()
 
 		time.Sleep(5 * time.Second)
@@ -117,6 +123,38 @@ func TestNewPeer(t *testing.T) {
 		require.True(t, peer.Connected())
 
 		require.NoError(t, err)
+		peer.Shutdown()
+	})
+
+	t.Run("announce transaction", func(t *testing.T) {
+
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+		pm := NewPeerManager(logger, wire.TestNet)
+		require.NotNil(t, pm)
+
+		peerHandler := &PeerHandlerIMock{
+			HandleTransactionGetFunc: func(msg *wire.InvVect, peer PeerI) ([]byte, error) {
+				return TX1RawBytes, nil
+			},
+		}
+
+		time.Sleep(5 * time.Second)
+
+		peer, err := NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet)
+		require.NoError(t, err)
+
+		err = pm.AddPeer(peer)
+		require.NoError(t, err)
+
+		time.Sleep(5 * time.Second)
+
+		require.True(t, peer.Connected())
+
+		pm.AnnounceTransaction(TX1Hash, []PeerI{peer})
+
+		time.Sleep(10 * time.Second)
+
 		peer.Shutdown()
 	})
 }

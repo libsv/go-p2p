@@ -13,7 +13,7 @@ test:
 
 .PHONY: lint
 lint:
-	golangci-lint run --skip-dirs ./wire
+	golangci-lint run --config=.golangci.yml -v ./... --skip-dirs ./wire
 	staticcheck ./...
 
 .PHONY: install
