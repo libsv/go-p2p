@@ -126,6 +126,7 @@ func TestReconnect(t *testing.T) {
 				WithDialer(func(network, address string) (net.Conn, error) {
 					return peerConn, nil
 				}),
+				WithRetryReadWriteMessageInterval(200*time.Millisecond),
 			)
 			require.NoError(t, err)
 
