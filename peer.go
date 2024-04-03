@@ -116,17 +116,8 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 func (p *Peer) initialize() {
 
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancelWriteHandler = cancel
-
 	go p.monitorConnectionHealth()
 	go p.pingHandler()
-	for i := 0; i < 10; i++ {
-		// start 10 workers that will write to the peer
-		// locking is done in the net.write in the wire/message handler
-		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
-		p.startWriteChannelHandler(ctx)
-	}
 
 	go func() {
 		err := p.connect()
@@ -162,6 +153,14 @@ func (p *Peer) initialize() {
 func (p *Peer) disconnect() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.cancelReadHandler != nil {
+		p.cancelReadHandler()
+	}
+
+	if p.cancelWriteHandler != nil {
+		p.cancelWriteHandler()
+	}
 
 	p._disconnect()
 }
@@ -202,6 +201,15 @@ func (p *Peer) connect() error {
 
 		// open the read connection, so we can receive messages
 		p.readConn = conn
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelWriteHandler = cancel
+	for i := 0; i < 10; i++ {
+		// start 10 workers that will write to the peer
+		// locking is done in the net.write in the wire/message handler
+		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
+		p.startWriteChannelHandler(ctx)
 	}
 
 	p.startReadHandler()
@@ -611,6 +619,10 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context) {
 					}
 
 					p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
+
+					p.disconnect()
+
+					return
 				}
 
 				go func(message wire.Message) {
