@@ -9,7 +9,7 @@ deps:
 
 .PHONY: test
 test:
-	go test -race -count=1 ./...
+	go test -race -v -count=1 ./...
 
 .PHONY: lint
 lint:
