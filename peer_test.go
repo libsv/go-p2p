@@ -169,6 +169,7 @@ func TestReconnect(t *testing.T) {
 			// wait until peer is disconnected
 			for {
 				if !p.Connected() {
+					t.Log("disconnected")
 					break
 				}
 				count++
@@ -181,7 +182,9 @@ func TestReconnect(t *testing.T) {
 			// recreate connection
 			peerConn, myConn = connutil.AsyncPipe()
 			t.Log("new connection created")
+			time.Sleep(5 * time.Second)
 
+			t.Log("handshake")
 			doHandshake(t, p, myConn)
 			for {
 				if p.Connected() {
@@ -194,7 +197,10 @@ func TestReconnect(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
+			t.Log("shutdown")
 			p.Shutdown()
+
+			time.Sleep(5 * time.Second)
 		})
 	}
 }
