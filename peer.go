@@ -35,9 +35,9 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
-	retryReadWriteMessageInterval = 1 * time.Second
-	retryReadWriteMessageAttempts = 5
-	reconnectInterval             = 10 * time.Second
+	retryReadWriteMessageIntervalDefault = 1 * time.Second
+	retryReadWriteMessageAttempts        = 5
+	reconnectInterval                    = 10 * time.Second
 
 	pingInterval                   = 2 * time.Minute
 	connectionHealthTickerDuration = 3 * time.Minute
@@ -53,29 +53,30 @@ type Block struct {
 }
 
 type Peer struct {
-	address            string
-	network            wire.BitcoinNet
-	mu                 sync.RWMutex
-	readConn           net.Conn
-	writeConn          net.Conn
-	incomingConn       net.Conn
-	dial               func(network, address string) (net.Conn, error)
-	peerHandler        PeerHandlerI
-	writeChan          chan wire.Message
-	quit               chan struct{}
-	pingPongAlive      chan struct{}
-	logger             *slog.Logger
-	sentVerAck         atomic.Bool
-	receivedVerAck     atomic.Bool
-	batchDelay         time.Duration
-	invBatcher         *batcher.Batcher[chainhash.Hash]
-	dataBatcher        *batcher.Batcher[chainhash.Hash]
-	maximumMessageSize int64
-	isHealthy          bool
-	cancelReadHandler  context.CancelFunc
-	cancelWriteHandler context.CancelFunc
-	userAgentName      *string
-	userAgentVersion   *string
+	address                       string
+	network                       wire.BitcoinNet
+	mu                            sync.RWMutex
+	readConn                      net.Conn
+	writeConn                     net.Conn
+	incomingConn                  net.Conn
+	dial                          func(network, address string) (net.Conn, error)
+	peerHandler                   PeerHandlerI
+	writeChan                     chan wire.Message
+	quit                          chan struct{}
+	pingPongAlive                 chan struct{}
+	logger                        *slog.Logger
+	sentVerAck                    atomic.Bool
+	receivedVerAck                atomic.Bool
+	batchDelay                    time.Duration
+	invBatcher                    *batcher.Batcher[chainhash.Hash]
+	dataBatcher                   *batcher.Batcher[chainhash.Hash]
+	maximumMessageSize            int64
+	isHealthy                     bool
+	cancelReadHandler             context.CancelFunc
+	cancelWriteHandler            context.CancelFunc
+	userAgentName                 *string
+	userAgentVersion              *string
+	retryReadWriteMessageInterval time.Duration
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -90,15 +91,16 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 	)
 
 	p := &Peer{
-		network:            network,
-		address:            address,
-		writeChan:          writeChan,
-		pingPongAlive:      make(chan struct{}, 1),
-		peerHandler:        peerHandler,
-		logger:             peerLogger,
-		dial:               net.Dial,
-		maximumMessageSize: defaultMaximumMessageSize,
-		batchDelay:         defaultBatchDelayMilliseconds * time.Millisecond,
+		network:                       network,
+		address:                       address,
+		writeChan:                     writeChan,
+		pingPongAlive:                 make(chan struct{}, 1),
+		peerHandler:                   peerHandler,
+		logger:                        peerLogger,
+		dial:                          net.Dial,
+		maximumMessageSize:            defaultMaximumMessageSize,
+		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
+		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
 	}
 
 	var err error
@@ -116,17 +118,8 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 func (p *Peer) initialize() {
 
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancelWriteHandler = cancel
-
 	go p.monitorConnectionHealth()
 	go p.pingHandler()
-	for i := 0; i < 10; i++ {
-		// start 10 workers that will write to the peer
-		// locking is done in the net.write in the wire/message handler
-		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
-		p.startWriteChannelHandler(ctx)
-	}
 
 	go func() {
 		err := p.connect()
@@ -162,6 +155,14 @@ func (p *Peer) initialize() {
 func (p *Peer) disconnect() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.cancelReadHandler != nil {
+		p.cancelReadHandler()
+	}
+
+	if p.cancelWriteHandler != nil {
+		p.cancelWriteHandler()
+	}
 
 	p._disconnect()
 }
@@ -202,6 +203,15 @@ func (p *Peer) connect() error {
 
 		// open the read connection, so we can receive messages
 		p.readConn = conn
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancelWriteHandler = cancel
+	for i := 0; i < 10; i++ {
+		// start 10 workers that will write to the peer
+		// locking is done in the net.write in the wire/message handler
+		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
+		p.startWriteChannelHandler(ctx)
 	}
 
 	p.startReadHandler()
@@ -265,7 +275,7 @@ func (p *Peer) String() string {
 }
 
 func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet wire.BitcoinNet) (wire.Message, error) {
-	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
+	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(p.retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
 
 	policyContext := backoff.WithContext(policy, ctx)
 
@@ -564,7 +574,7 @@ func (p *Peer) sendDataBatch(batch []*chainhash.Hash) {
 }
 
 func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
-	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
+	policy := backoff.WithMaxRetries(backoff.NewConstantBackOff(p.retryReadWriteMessageInterval), retryReadWriteMessageAttempts)
 
 	policyContext := backoff.WithContext(policy, ctx)
 
@@ -611,6 +621,10 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context) {
 					}
 
 					p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
+
+					p.disconnect()
+
+					return
 				}
 
 				go func(message wire.Message) {

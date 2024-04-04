@@ -98,6 +98,113 @@ func TestWriteMsg(t *testing.T) {
 	})
 }
 
+func TestReconnect(t *testing.T) {
+	tt := []struct {
+		name       string
+		cancelRead bool
+	}{
+		{
+			name:       "writer connection breaks - reconnect",
+			cancelRead: true,
+		},
+		{
+			name: "reader connection breaks - reconnect",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			peerConn, myConn := connutil.AsyncPipe()
+
+			peerHandler := NewMockPeerHandler()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			p, err := NewPeer(
+				logger,
+				"MockPeerHandler:0000",
+				peerHandler,
+				wire.MainNet,
+				WithDialer(func(network, address string) (net.Conn, error) {
+					return peerConn, nil
+				}),
+				WithRetryReadWriteMessageInterval(200*time.Millisecond),
+			)
+			require.NoError(t, err)
+
+			doHandshake(t, p, myConn)
+
+			// wait for the peer to be connected
+			count := 0
+			for {
+				if p.Connected() {
+					break
+				}
+				count++
+				if count >= 3 {
+					t.Error("peer not connected")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			invMsg := wire.NewMsgInv()
+			hash, err := chainhash.NewHashFromStr(tx1)
+			require.NoError(t, err)
+			err = invMsg.AddInvVect(wire.NewInvVect(wire.InvTypeTx, hash))
+			require.NoError(t, err)
+
+			if tc.cancelRead {
+				// cancel reader and ensure writer will disconnect
+				p.cancelReadHandler()
+			} else {
+				// cancel writer and ensure reader will disconnect
+				p.cancelWriteHandler()
+			}
+
+			// break connection
+			err = myConn.Close()
+			require.NoError(t, err)
+
+			err = p.WriteMsg(invMsg)
+			require.NoError(t, err)
+
+			// wait until peer is disconnected
+			for {
+				if !p.Connected() {
+					t.Log("disconnected")
+					break
+				}
+				count++
+				if count >= 50 {
+					t.Fatal("peer connection not broken")
+				}
+				time.Sleep(200 * time.Millisecond)
+			}
+
+			// recreate connection
+			peerConn, myConn = connutil.AsyncPipe()
+			t.Log("new connection created")
+			time.Sleep(5 * time.Second)
+
+			t.Log("handshake")
+			doHandshake(t, p, myConn)
+			for {
+				if p.Connected() {
+					break
+				}
+				count++
+				if count >= 20 {
+					t.Fatal("peer connection not established")
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			t.Log("shutdown")
+			p.Shutdown()
+
+			time.Sleep(5 * time.Second)
+		})
+	}
+}
+
 func Test_readHandler(t *testing.T) {
 	t.Run("read message - inv tx", func(t *testing.T) {
 		myConn, _, peerHandler := newTestPeer(t)

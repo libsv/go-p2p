@@ -47,3 +47,10 @@ func WithUserAgent(userAgentName string, userAgentVersion string) PeerOptions {
 		return nil
 	}
 }
+
+func WithRetryReadWriteMessageInterval(d time.Duration) PeerOptions {
+	return func(p *Peer) error {
+		p.retryReadWriteMessageInterval = d
+		return nil
+	}
+}
