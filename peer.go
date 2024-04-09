@@ -307,11 +307,11 @@ func (p *Peer) startReadHandler() {
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancelReadHandler = cancel
 
-	p.logger.Info("Starting read handler")
+	p.logger.Debug("Starting read handler")
 
 	go func(cancelCtx context.Context) {
 		defer func() {
-			p.logger.Info("Shutting down read handler")
+			p.logger.Debug("Shutting down read handler")
 		}()
 
 		readConn := p.readConn
@@ -332,7 +332,7 @@ func (p *Peer) startReadHandler() {
 				msg, err = p.readRetry(cancelCtx, reader, wire.ProtocolVersion, p.network)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
-						p.logger.Info("Retrying to read cancelled")
+						p.logger.Debug("Retrying to read cancelled")
 						return
 					}
 
@@ -525,7 +525,7 @@ func (p *Peer) AnnounceBlock(blockHash *chainhash.Hash) {
 	if err := p.WriteMsg(invMsg); err != nil {
 		p.logger.Error("failed to send INV message", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()), slog.String(errKey, err.Error()))
 	} else {
-		p.logger.Info("Sent INV", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()))
+		p.logger.Debug("Sent INV", slog.String(typeKey, iv.Type.String()), slog.String(hashKey, blockHash.String()))
 	}
 }
 
@@ -590,11 +590,11 @@ func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 }
 
 func (p *Peer) startWriteChannelHandler(ctx context.Context) {
-	p.logger.Info("Starting write handler")
+	p.logger.Debug("Starting write handler")
 
 	go func(cancelCtx context.Context) {
 		defer func() {
-			p.logger.Info("Shutting down write handler")
+			p.logger.Debug("Shutting down write handler")
 		}()
 
 		for {
@@ -616,7 +616,7 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context) {
 				err := p.writeRetry(cancelCtx, msg)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
-						p.logger.Info("Retrying to write cancelled")
+						p.logger.Debug("Retrying to write cancelled")
 						return
 					}
 
