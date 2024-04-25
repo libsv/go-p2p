@@ -118,7 +118,7 @@ func TestReconnect(t *testing.T) {
 
 			peerHandler := NewMockPeerHandler()
 			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
-			p, err := NewPeer(
+			peer, err := NewPeer(
 				logger,
 				"MockPeerHandler:0000",
 				peerHandler,
@@ -130,19 +130,31 @@ func TestReconnect(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			doHandshake(t, p, myConn)
+			t.Log("handshake 1")
+			handshakeFinished := make(chan struct{})
+			go func() {
+				doHandshake(t, peer, myConn)
+				handshakeFinished <- struct{}{}
+			}()
 
-			// wait for the peer to be connected
-			count := 0
+			select {
+			case <-handshakeFinished:
+				t.Log("handshake 1 finished")
+			case <-time.After(5 * time.Second):
+				t.Fatal("handshake 1 timeout")
+			}
+
+			t.Log("expect that peer has connected")
+		connectLoop:
 			for {
-				if p.Connected() {
-					break
+				select {
+				case <-time.NewTicker(10 * time.Millisecond).C:
+					if peer.Connected() {
+						break connectLoop
+					}
+				case <-time.NewTimer(1 * time.Second).C:
+					t.Fatal("peer did not connect")
 				}
-				count++
-				if count >= 3 {
-					t.Error("peer not connected")
-				}
-				time.Sleep(10 * time.Millisecond)
 			}
 
 			invMsg := wire.NewMsgInv()
@@ -152,55 +164,83 @@ func TestReconnect(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.cancelRead {
-				// cancel reader and ensure writer will disconnect
-				p.cancelReadHandler()
+				// cancel reader so that writer will disconnect
+				peer.stopReadHandler()
 			} else {
-				// cancel writer and ensure reader will disconnect
-				p.cancelWriteHandler()
+				// cancel writer so that reader will disconnect
+				peer.stopWriteHandler()
 			}
 
 			// break connection
 			err = myConn.Close()
 			require.NoError(t, err)
 
-			err = p.WriteMsg(invMsg)
+			err = peer.WriteMsg(invMsg)
 			require.NoError(t, err)
 
-			// wait until peer is disconnected
+			t.Log("expect that peer has disconnected")
+		disconnectLoop:
 			for {
-				if !p.Connected() {
-					t.Log("disconnected")
-					break
+				select {
+				case <-time.NewTicker(200 * time.Millisecond).C:
+					if !peer.Connected() {
+						break disconnectLoop
+					}
+				case <-time.NewTimer(6 * time.Second).C:
+					t.Fatal("peer did not disconnect")
 				}
-				count++
-				if count >= 50 {
-					t.Fatal("peer connection not broken")
-				}
-				time.Sleep(200 * time.Millisecond)
 			}
 
 			// recreate connection
+			peer.mu.Lock()
 			peerConn, myConn = connutil.AsyncPipe()
+			peer.mu.Unlock()
 			t.Log("new connection created")
 			time.Sleep(5 * time.Second)
 
-			t.Log("handshake")
-			doHandshake(t, p, myConn)
+			t.Log("handshake 2")
+
+			go func() {
+				doHandshake(t, peer, myConn)
+				handshakeFinished <- struct{}{}
+			}()
+
+			select {
+			case <-handshakeFinished:
+				t.Log("handshake 2 finished")
+			case <-time.After(5 * time.Second):
+				t.Fatal("handshake 2 timeout")
+			}
+
+			t.Log("expect that peer has re-established connection")
+		reconnectLoop:
 			for {
-				if p.Connected() {
-					break
+				select {
+				case <-time.NewTicker(200 * time.Millisecond).C:
+					if peer.Connected() {
+						break reconnectLoop
+					}
+				case <-time.NewTimer(2 * time.Second).C:
+					t.Fatal("peer did not reconnect")
 				}
-				count++
-				if count >= 20 {
-					t.Fatal("peer connection not established")
-				}
-				time.Sleep(100 * time.Millisecond)
 			}
 
 			t.Log("shutdown")
-			p.Shutdown()
+			shutdownFinished := make(chan struct{})
+			go func() {
+				peer.Shutdown()
+				shutdownFinished <- struct{}{}
+			}()
 
-			time.Sleep(5 * time.Second)
+			select {
+			case <-shutdownFinished:
+				t.Log("shutdown finished")
+			case <-time.After(5 * time.Second):
+				t.Fatal("shutdown timeout")
+			}
+
+			err = myConn.Close()
+			require.NoError(t, err)
 		})
 	}
 }
@@ -359,7 +399,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",
@@ -392,7 +432,7 @@ func newTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 func newIncomingTestPeer(t *testing.T) (net.Conn, *Peer, *MockPeerHandler) {
 	peerConn, myConn := connutil.AsyncPipe()
 	peerHandler := NewMockPeerHandler()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	p, err := NewPeer(
 		logger,
 		"MockPeerHandler:0000",
