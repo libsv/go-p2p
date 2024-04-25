@@ -98,6 +98,60 @@ func TestWriteMsg(t *testing.T) {
 	})
 }
 
+func TestShutdown(t *testing.T) {
+	tt := []struct {
+		name string
+	}{
+		{
+			name: "Shutdown",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			peerConn, myConn := connutil.AsyncPipe()
+
+			peerHandler := NewMockPeerHandler()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			p, err := NewPeer(
+				logger,
+				"MockPeerHandler:0000",
+				peerHandler,
+				wire.MainNet,
+				WithDialer(func(network, address string) (net.Conn, error) {
+					return peerConn, nil
+				}),
+				WithRetryReadWriteMessageInterval(200*time.Millisecond),
+			)
+			require.NoError(t, err)
+
+			doHandshake(t, p, myConn)
+
+			// wait for the peer to be connected
+		connectLoop:
+			for {
+				select {
+				case <-time.NewTicker(10 * time.Millisecond).C:
+					if p.Connected() {
+						break connectLoop
+					}
+				case <-time.NewTimer(1 * time.Second).C:
+					t.Fatal("peer did not disconnect")
+				}
+			}
+
+			invMsg := wire.NewMsgInv()
+			hash, err := chainhash.NewHashFromStr(tx1)
+			require.NoError(t, err)
+			err = invMsg.AddInvVect(wire.NewInvVect(wire.InvTypeTx, hash))
+			require.NoError(t, err)
+
+			t.Log("shutdown")
+			p.Shutdown()
+		})
+	}
+}
+
 func TestReconnect(t *testing.T) {
 	tt := []struct {
 		name       string
