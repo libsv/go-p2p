@@ -237,7 +237,7 @@ func (p *Peer) connectAndStartReadWriteHandlers(ctx context.Context) error {
 		// start 10 workers that will write to the peer
 		// locking is done in the net.write in the wire/message handler
 		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
-		go p.startWriteChannelHandler(writerCtx)
+		go p.startWriteChannelHandler(writerCtx, i+1)
 	}
 
 	readerCtx, cancelReader := context.WithCancel(ctx)
@@ -659,19 +659,19 @@ func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 	return backoff.RetryNotify(operation, policyContext, notify)
 }
 
-func (p *Peer) startWriteChannelHandler(cancelCtx context.Context) {
-	p.logger.Debug("Starting write handler")
+func (p *Peer) startWriteChannelHandler(cancelCtx context.Context, instance int) {
+	p.logger.Debug("Starting write handler", slog.Int("instance", instance))
 	p.writerWg.Add(1)
 
 	defer func() {
-		p.logger.Debug("Shutting down write handler")
+		p.logger.Debug("Shutting down write handler", slog.Int("instance", instance))
 		p.writerWg.Done()
 	}()
 
 	for {
 		select {
 		case <-cancelCtx.Done():
-			p.logger.Debug("Write handler canceled")
+			p.logger.Debug("Write handler canceled", slog.Int("instance", instance))
 			return
 		case msg := <-p.writeChan:
 
@@ -688,11 +688,11 @@ func (p *Peer) startWriteChannelHandler(cancelCtx context.Context) {
 			err := p.writeRetry(cancelCtx, msg)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
-					p.logger.Debug("Retrying to write canceled")
+					p.logger.Debug("Retrying to write canceled", slog.Int("instance", instance))
 					return
 				}
 
-				p.logger.Error("Failed retrying to write message", slog.String(errKey, err.Error()))
+				p.logger.Error("Failed retrying to write message", slog.Int("instance", instance), slog.String(errKey, err.Error()))
 
 				// stop all read and write handlers
 				p.cancelWriteHandler()
@@ -711,7 +711,7 @@ func (p *Peer) startWriteChannelHandler(cancelCtx context.Context) {
 					}
 					hash := msgTx.TxHash()
 					if err := p.peerHandler.HandleTransactionSent(msgTx, p); err != nil {
-						p.logger.Error("Unable to process tx", slog.String(hashKey, hash.String()), slog.String(errKey, err.Error()))
+						p.logger.Error("Unable to process tx", slog.Int("instance", instance), slog.String(hashKey, hash.String()), slog.String(errKey, err.Error()))
 					}
 				}
 
