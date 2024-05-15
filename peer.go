@@ -372,7 +372,7 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 	return nil, readMessageErr
 }
 
-func (p *Peer) startReadHandler(cancelCtx context.Context) {
+func (p *Peer) startReadHandler(ctx context.Context) {
 	p.logger.Debug("Starting read handler")
 
 	defer func() {
@@ -392,11 +392,11 @@ func (p *Peer) startReadHandler(cancelCtx context.Context) {
 	reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
 	for {
 		select {
-		case <-cancelCtx.Done():
+		case <-ctx.Done():
 			p.logger.Debug("Read handler canceled")
 			return
 		default:
-			msg, err = p.readRetry(cancelCtx, reader, wire.ProtocolVersion, p.network)
+			msg, err = p.readRetry(ctx, reader, wire.ProtocolVersion, p.network)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					p.logger.Debug("Retrying to read canceled")
@@ -659,7 +659,7 @@ func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 	return backoff.RetryNotify(operation, policyContext, notify)
 }
 
-func (p *Peer) startWriteChannelHandler(cancelCtx context.Context, instance int) {
+func (p *Peer) startWriteChannelHandler(ctx context.Context, instance int) {
 	p.logger.Debug("Starting write handler", slog.Int("instance", instance))
 
 	defer func() {
@@ -669,7 +669,7 @@ func (p *Peer) startWriteChannelHandler(cancelCtx context.Context, instance int)
 
 	for {
 		select {
-		case <-cancelCtx.Done():
+		case <-ctx.Done():
 			p.logger.Debug("Write handler canceled", slog.Int("instance", instance))
 			return
 		case msg := <-p.writeChan:
@@ -684,7 +684,7 @@ func (p *Peer) startWriteChannelHandler(cancelCtx context.Context, instance int)
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-			err := p.writeRetry(cancelCtx, msg)
+			err := p.writeRetry(ctx, msg)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					p.logger.Debug("Retrying to write canceled", slog.Int("instance", instance))
