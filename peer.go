@@ -79,7 +79,7 @@ type Peer struct {
 
 	cancelReadHandler  context.CancelFunc
 	cancelWriteHandler context.CancelFunc
-	cancelMonitoring   context.CancelFunc
+	cancelAll          context.CancelFunc
 
 	readerWg        *sync.WaitGroup
 	writerWg        *sync.WaitGroup
@@ -125,9 +125,9 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		}
 	}
 
-	cancelCtx, cancelAll := context.WithCancel(context.Background())
-	p.cancelMonitoring = cancelAll
-	p.ctx = cancelCtx
+	ctx, cancelAll := context.WithCancel(context.Background())
+	p.cancelAll = cancelAll
+	p.ctx = ctx
 
 	p.healthMonitorWg.Add(1)
 	go p.monitorConnectionHealth()
@@ -228,9 +228,7 @@ func (p *Peer) connectAndStartReadWriteHandlers() error {
 		p.readConn = conn
 	}
 
-	ctx := context.Background()
-
-	writerCtx, cancelWriter := context.WithCancel(ctx)
+	writerCtx, cancelWriter := context.WithCancel(p.ctx)
 	p.cancelWriteHandler = cancelWriter
 	for i := 0; i < 10; i++ {
 		// start 10 workers that will write to the peer
@@ -240,7 +238,7 @@ func (p *Peer) connectAndStartReadWriteHandlers() error {
 		go p.startWriteChannelHandler(writerCtx, i+1)
 	}
 
-	readerCtx, cancelReader := context.WithCancel(ctx)
+	readerCtx, cancelReader := context.WithCancel(p.ctx)
 	p.cancelReadHandler = cancelReader
 	p.readerWg.Add(1)
 	go p.startReadHandler(readerCtx)
@@ -847,12 +845,11 @@ func (p *Peer) stopWriteHandler() {
 }
 
 func (p *Peer) Shutdown() {
-	p.cancelMonitoring()
+	p.cancelAll()
+
 	p.reconnectingWg.Wait()
 	p.healthMonitorWg.Wait()
 	p.pingHandlerWg.Wait()
-
-	p.stopWriteHandler()
-
-	p.stopReadHandler()
+	p.writerWg.Wait()
+	p.readerWg.Wait()
 }
