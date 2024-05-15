@@ -74,21 +74,16 @@ type Peer struct {
 	userAgentName                 *string
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
-
-	cancelReadHandler context.CancelFunc
-	readerWg          *sync.WaitGroup
-
-	cancelWriteHandler context.CancelFunc
-	writerWg           *sync.WaitGroup
-
-	cancelReconnecting         context.CancelFunc
-	cancelReconnectingComplete chan struct{}
-
-	cancelPingHandler       context.CancelFunc
-	quitPingHandlerComplete chan struct{}
-
-	cancelHealthMonitor         context.CancelFunc
-	cancelHealthMonitorComplete chan struct{}
+	cancelReadHandler             context.CancelFunc
+	readerWg                      *sync.WaitGroup
+	cancelWriteHandler            context.CancelFunc
+	writerWg                      *sync.WaitGroup
+	cancelReconnecting            context.CancelFunc
+	reconnectingWg                *sync.WaitGroup
+	cancelPingHandler             context.CancelFunc
+	pingHandlerWg                 *sync.WaitGroup
+	cancelHealthMonitor           context.CancelFunc
+	healthMonitorWg               *sync.WaitGroup
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -113,10 +108,11 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		maximumMessageSize:            defaultMaximumMessageSize,
 		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
 		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
-		quitPingHandlerComplete:       make(chan struct{}, 1),
-		cancelHealthMonitorComplete:   make(chan struct{}, 1),
 		writerWg:                      &sync.WaitGroup{},
 		readerWg:                      &sync.WaitGroup{},
+		reconnectingWg:                &sync.WaitGroup{},
+		pingHandlerWg:                 &sync.WaitGroup{},
+		healthMonitorWg:               &sync.WaitGroup{},
 	}
 
 	var err error
@@ -131,10 +127,12 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 	monitorCtx, cancelHealthMonitor := context.WithCancel(ctx)
 	p.cancelHealthMonitor = cancelHealthMonitor
+	p.healthMonitorWg.Add(1)
 	go p.monitorConnectionHealth(monitorCtx)
 
 	pingHandlerCtx, cancelPingHandler := context.WithCancel(ctx)
 	p.cancelPingHandler = cancelPingHandler
+	p.pingHandlerWg.Add(1)
 	go p.pingHandler(pingHandlerCtx)
 
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
@@ -154,11 +152,11 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 	// reconnect if disconnected, but only on outgoing connections
 	reconnectCtx, cancelReconnect := context.WithCancel(ctx)
 	p.cancelReconnecting = cancelReconnect
-	p.cancelReconnectingComplete = make(chan struct{}, 1)
 
+	p.reconnectingWg.Add(1)
 	go func(funcCtx context.Context) {
 		defer func() {
-			p.cancelReconnectingComplete <- struct{}{}
+			p.reconnectingWg.Done()
 		}()
 		connectErr := p.connectAndStartReadWriteHandlers(funcCtx)
 		if connectErr != nil {
@@ -237,11 +235,13 @@ func (p *Peer) connectAndStartReadWriteHandlers(ctx context.Context) error {
 		// start 10 workers that will write to the peer
 		// locking is done in the net.write in the wire/message handler
 		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
+		p.writerWg.Add(1)
 		go p.startWriteChannelHandler(writerCtx, i+1)
 	}
 
 	readerCtx, cancelReader := context.WithCancel(ctx)
 	p.cancelReadHandler = cancelReader
+	p.readerWg.Add(1)
 	go p.startReadHandler(readerCtx)
 
 	// write version message to our peer directly and not through the write channel,
@@ -373,7 +373,6 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 
 func (p *Peer) startReadHandler(cancelCtx context.Context) {
 	p.logger.Debug("Starting read handler")
-	p.readerWg.Add(1)
 
 	defer func() {
 		p.logger.Debug("Shutting down read handler")
@@ -661,7 +660,6 @@ func (p *Peer) writeRetry(ctx context.Context, msg wire.Message) error {
 
 func (p *Peer) startWriteChannelHandler(cancelCtx context.Context, instance int) {
 	p.logger.Debug("Starting write handler", slog.Int("instance", instance))
-	p.writerWg.Add(1)
 
 	defer func() {
 		p.logger.Debug("Shutting down write handler", slog.Int("instance", instance))
@@ -770,9 +768,10 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 // pingHandler periodically pings the peer. It must be run as a goroutine.
 func (p *Peer) pingHandler(ctx context.Context) {
 	pingTicker := time.NewTicker(pingInterval)
+
 	defer func() {
+		p.pingHandlerWg.Done()
 		pingTicker.Stop()
-		p.quitPingHandlerComplete <- struct{}{}
 	}()
 
 	for {
@@ -794,9 +793,10 @@ func (p *Peer) pingHandler(ctx context.Context) {
 func (p *Peer) monitorConnectionHealth(ctx context.Context) {
 	// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
 	checkConnectionHealthTicker := time.NewTicker(connectionHealthTickerDuration)
+
 	defer func() {
+		p.healthMonitorWg.Done()
 		checkConnectionHealthTicker.Stop()
-		p.cancelHealthMonitorComplete <- struct{}{}
 	}()
 
 	for {
@@ -847,13 +847,13 @@ func (p *Peer) stopWriteHandler() {
 
 func (p *Peer) Shutdown() {
 	p.cancelReconnecting()
-	<-p.cancelReconnectingComplete
+	p.reconnectingWg.Wait()
 
 	p.cancelHealthMonitor()
-	<-p.cancelHealthMonitorComplete
+	p.healthMonitorWg.Wait()
 
 	p.cancelPingHandler()
-	<-p.quitPingHandlerComplete
+	p.pingHandlerWg.Wait()
 
 	p.stopWriteHandler()
 
