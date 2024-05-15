@@ -75,15 +75,17 @@ type Peer struct {
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
 	cancelReadHandler             context.CancelFunc
-	readerWg                      *sync.WaitGroup
 	cancelWriteHandler            context.CancelFunc
-	writerWg                      *sync.WaitGroup
 	cancelReconnecting            context.CancelFunc
-	reconnectingWg                *sync.WaitGroup
-	cancelPingHandler             context.CancelFunc
-	pingHandlerWg                 *sync.WaitGroup
-	cancelHealthMonitor           context.CancelFunc
-	healthMonitorWg               *sync.WaitGroup
+	cancelAll                     context.CancelFunc
+
+	readerWg        *sync.WaitGroup
+	writerWg        *sync.WaitGroup
+	reconnectingWg  *sync.WaitGroup
+	pingHandlerWg   *sync.WaitGroup
+	healthMonitorWg *sync.WaitGroup
+
+	ctx context.Context
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -125,15 +127,15 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 	ctx := context.Background()
 
-	monitorCtx, cancelHealthMonitor := context.WithCancel(ctx)
-	p.cancelHealthMonitor = cancelHealthMonitor
-	p.healthMonitorWg.Add(1)
-	go p.monitorConnectionHealth(monitorCtx)
+	cancelCtx, cancelAll := context.WithCancel(ctx)
+	p.cancelAll = cancelAll
+	p.ctx = cancelCtx
 
-	pingHandlerCtx, cancelPingHandler := context.WithCancel(ctx)
-	p.cancelPingHandler = cancelPingHandler
+	p.healthMonitorWg.Add(1)
+	go p.monitorConnectionHealth()
+
 	p.pingHandlerWg.Add(1)
-	go p.pingHandler(pingHandlerCtx)
+	go p.pingHandler()
 
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
 	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
@@ -766,7 +768,7 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 }
 
 // pingHandler periodically pings the peer. It must be run as a goroutine.
-func (p *Peer) pingHandler(ctx context.Context) {
+func (p *Peer) pingHandler() {
 	pingTicker := time.NewTicker(pingInterval)
 
 	defer func() {
@@ -784,13 +786,13 @@ func (p *Peer) pingHandler(ctx context.Context) {
 			}
 			p.writeChan <- wire.NewMsgPing(nonce)
 
-		case <-ctx.Done():
+		case <-p.ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *Peer) monitorConnectionHealth(ctx context.Context) {
+func (p *Peer) monitorConnectionHealth() {
 	// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
 	checkConnectionHealthTicker := time.NewTicker(connectionHealthTickerDuration)
 
@@ -812,7 +814,7 @@ func (p *Peer) monitorConnectionHealth(ctx context.Context) {
 			p.mu.Lock()
 			p.isHealthy = false
 			p.mu.Unlock()
-		case <-ctx.Done():
+		case <-p.ctx.Done():
 			return
 		}
 	}
@@ -849,10 +851,8 @@ func (p *Peer) Shutdown() {
 	p.cancelReconnecting()
 	p.reconnectingWg.Wait()
 
-	p.cancelHealthMonitor()
+	p.cancelAll()
 	p.healthMonitorWg.Wait()
-
-	p.cancelPingHandler()
 	p.pingHandlerWg.Wait()
 
 	p.stopWriteHandler()
