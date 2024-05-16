@@ -1,9 +1,8 @@
-package p2p
+package test
 
 import (
-	"encoding/hex"
 	"fmt"
-	"github.com/libsv/go-p2p/chaincfg/chainhash"
+	"github.com/libsv/go-p2p"
 	"log"
 	"log/slog"
 	"os"
@@ -26,11 +25,6 @@ var (
 	pool     *dockertest.Pool
 	resource *dockertest.Resource
 	pwd      string
-
-	TX1            = "b042f298deabcebbf15355aa3a13c7d7cfe96c44ac4f492735f936f8e50d06f6"
-	TX1Hash, _     = chainhash.NewHashFromStr(TX1)
-	TX1Raw         = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff1a0386c40b2f7461616c2e636f6d2f00cf47ad9c7af83836000000ffffffff0117564425000000001976a914522cf9e7626d9bd8729e5a1398ece40dad1b6a2f88ac00000000"
-	TX1RawBytes, _ = hex.DecodeString(TX1Raw)
 )
 
 func TestMain(m *testing.M) {
@@ -68,7 +62,7 @@ func TestMain(m *testing.M) {
 		config.Mounts = []docker.HostMount{
 			{
 				Target: "/data/bitcoin.conf",
-				Source: fmt.Sprintf("%s/peer_integration_test_config/bitcoin.conf", pwd),
+				Source: fmt.Sprintf("%s/bitcoin.conf", pwd),
 				Type:   "bind",
 			},
 		}
@@ -94,66 +88,100 @@ func TestNewPeer(t *testing.T) {
 	}
 
 	t.Run("break and re-establish peer connection", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-		peerHandler := NewMockPeerHandler()
+		peerHandler := p2p.NewMockPeerHandler()
 
-		time.Sleep(5 * time.Second)
-
-		peer, err := NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet, WithUserAgent("agent", "0.0.1"))
+		peer, err := p2p.NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet, p2p.WithUserAgent("agent", "0.0.1"))
 		require.NoError(t, err)
 
-		time.Sleep(5 * time.Second)
-
-		require.True(t, peer.Connected())
+		t.Log("expect that peer has connected")
+	connectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break connectLoop
+				}
+			case <-time.NewTimer(5 * time.Second).C:
+				t.Fatal("peer did not connect")
+			}
+		}
 
 		dockerClient := pool.Client
 
-		// restart container and break connection
+		t.Log("restart container and break connection")
 		err = dockerClient.RestartContainer(resource.Container.ID, 10)
 		require.NoError(t, err)
 
-		time.Sleep(6 * time.Second)
+		t.Log("expect that peer has disconnected")
+	disconnectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if !peer.Connected() {
+					break disconnectLoop
+				}
+			case <-time.NewTimer(6 * time.Second).C:
+				t.Fatal("peer did not disconnect")
+			}
+		}
 
-		// expect that peer has disconnected
-		require.False(t, peer.Connected())
-
-		// wait longer than the reconnect interval and expect that peer has re-established connection
-		time.Sleep(reconnectInterval + 2*time.Second)
-		require.True(t, peer.Connected())
+		t.Log("expect that peer has re-established connection")
+	reconnectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break reconnectLoop
+				}
+			case <-time.NewTimer(2 * time.Second).C:
+				t.Fatal("peer did not reconnect")
+			}
+		}
 
 		require.NoError(t, err)
+
+		t.Log("shutdown")
 		peer.Shutdown()
+		t.Log("shutdown finished")
 	})
 
 	t.Run("announce transaction", func(t *testing.T) {
 
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-		pm := NewPeerManager(logger, wire.TestNet)
+		pm := p2p.NewPeerManager(logger, wire.TestNet)
 		require.NotNil(t, pm)
 
-		peerHandler := &PeerHandlerIMock{
-			HandleTransactionGetFunc: func(msg *wire.InvVect, peer PeerI) ([]byte, error) {
+		peerHandler := &p2p.PeerHandlerIMock{
+			HandleTransactionGetFunc: func(msg *wire.InvVect, peer p2p.PeerI) ([]byte, error) {
 				return TX1RawBytes, nil
 			},
 		}
 
-		time.Sleep(5 * time.Second)
-
-		peer, err := NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet)
+		peer, err := p2p.NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet)
 		require.NoError(t, err)
 
 		err = pm.AddPeer(peer)
 		require.NoError(t, err)
 
-		time.Sleep(5 * time.Second)
+		t.Log("expect that peer has connected")
+	connectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break connectLoop
+				}
+			case <-time.NewTimer(5 * time.Second).C:
+				t.Fatal("peer did not disconnect")
+			}
+		}
 
-		require.True(t, peer.Connected())
+		pm.AnnounceTransaction(TX1Hash, []p2p.PeerI{peer})
 
-		pm.AnnounceTransaction(TX1Hash, []PeerI{peer})
-
-		time.Sleep(10 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
 		peer.Shutdown()
 	})
