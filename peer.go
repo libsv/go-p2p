@@ -128,6 +128,12 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		}
 	}
 
+	p.start()
+
+	return p, nil
+}
+
+func (p *Peer) start() {
 	ctx, cancelAll := context.WithCancel(context.Background())
 	p.cancelAll = cancelAll
 	p.ctx = ctx
@@ -143,20 +149,18 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 	if p.incomingConn != nil {
 		go func() {
-			connectErr := p.connectAndStartReadWriteHandlers()
-			if connectErr != nil {
+			err := p.connectAndStartReadWriteHandlers()
+			if err != nil {
 				p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
 			}
 		}()
 		p.logger.Info("Incoming connection from peer")
-		return p, nil
+		return
 	}
 
 	// reconnect if disconnected, but only on outgoing connections
 	p.reconnectingWg.Add(1)
 	go p.reconnect()
-
-	return p, nil
 }
 
 func (p *Peer) disconnectLock() {
@@ -846,6 +850,12 @@ func (p *Peer) stopWriteHandler() {
 	p.cancelWriteHandler()
 	p.logger.Debug("Waiting for writer handlers to stop")
 	p.writerWg.Wait()
+}
+
+func (p *Peer) Restart() {
+	p.Shutdown()
+
+	p.start()
 }
 
 func (p *Peer) Shutdown() {
