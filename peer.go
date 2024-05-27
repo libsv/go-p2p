@@ -813,6 +813,7 @@ func (p *Peer) monitorConnectionHealth() {
 		case <-checkConnectionHealthTicker.C:
 			p.mu.Lock()
 			p.isHealthy = false
+			p.logger.Warn("peer unhealthy")
 			p.mu.Unlock()
 		case <-p.ctx.Done():
 			return
