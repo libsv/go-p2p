@@ -18,6 +18,7 @@ type PeerManagerI interface {
 	RequestBlock(blockHash *chainhash.Hash) PeerI
 	AddPeer(peer PeerI) error
 	GetPeers() []PeerI
+	Shutdown()
 }
 
 type PeerI interface {
