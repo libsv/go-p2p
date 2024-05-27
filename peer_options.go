@@ -54,3 +54,10 @@ func WithRetryReadWriteMessageInterval(d time.Duration) PeerOptions {
 		return nil
 	}
 }
+
+func WithNrOfWriteHandlers(NrWriteHandlers int) PeerOptions {
+	return func(p *Peer) error {
+		p.nrWriteHandlers = NrWriteHandlers
+		return nil
+	}
+}

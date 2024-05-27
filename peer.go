@@ -35,6 +35,7 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
+	nrWriteHandlersDefault               = 10
 	retryReadWriteMessageIntervalDefault = 1 * time.Second
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
@@ -74,6 +75,7 @@ type Peer struct {
 	userAgentName                 *string
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
+	nrWriteHandlers               int
 
 	ctx context.Context
 
@@ -107,6 +109,7 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		peerHandler:                   peerHandler,
 		logger:                        peerLogger,
 		dial:                          net.Dial,
+		nrWriteHandlers:               nrWriteHandlersDefault,
 		maximumMessageSize:            defaultMaximumMessageSize,
 		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
 		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
@@ -230,7 +233,7 @@ func (p *Peer) connectAndStartReadWriteHandlers() error {
 
 	writerCtx, cancelWriter := context.WithCancel(p.ctx)
 	p.cancelWriteHandler = cancelWriter
-	for i := 0; i < 10; i++ {
+	for i := 0; i < p.nrWriteHandlers; i++ {
 		// start 10 workers that will write to the peer
 		// locking is done in the net.write in the wire/message handler
 		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
