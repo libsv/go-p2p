@@ -781,7 +781,7 @@ func (p *Peer) pingHandler() {
 		case <-pingTicker.C:
 			nonce, err := wire.RandomUint64()
 			if err != nil {
-				p.logger.Error("Not sending ping", slog.String(errKey, err.Error()))
+				p.logger.Error("Failed to create random nonce - not sending ping", slog.String(errKey, err.Error()))
 				continue
 			}
 			p.writeChan <- wire.NewMsgPing(nonce)
