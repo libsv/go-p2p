@@ -67,6 +67,12 @@ func (pm *PeerManager) GetPeers() []PeerI {
 	return peers
 }
 
+func (pm *PeerManager) Shutdown() {
+	for _, peer := range pm.peers {
+		peer.Shutdown()
+	}
+}
+
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil
 // it will return the peers that the transaction was actually announced to
 func (pm *PeerManager) AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI) []PeerI {
@@ -74,11 +80,15 @@ func (pm *PeerManager) AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI
 		peers = pm.GetAnnouncedPeers()
 	}
 
+	announcedPeers := make([]PeerI, 0, len(peers))
 	for _, peer := range peers {
-		peer.AnnounceTransaction(txHash)
+		if peer.Connected() && peer.IsHealthy() {
+			peer.AnnounceTransaction(txHash)
+			announcedPeers = append(announcedPeers, peer)
+		}
 	}
 
-	return peers
+	return announcedPeers
 }
 
 func (pm *PeerManager) RequestTransaction(txHash *chainhash.Hash) PeerI {

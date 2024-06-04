@@ -136,7 +136,7 @@ func TestShutdown(t *testing.T) {
 						break connectLoop
 					}
 				case <-time.NewTimer(1 * time.Second).C:
-					t.Fatal("peer did not disconnect")
+					t.Fatal("peer did not connect")
 				}
 			}
 
@@ -148,6 +148,120 @@ func TestShutdown(t *testing.T) {
 
 			t.Log("shutdown")
 			p.Shutdown()
+		})
+	}
+}
+
+func TestRestart(t *testing.T) {
+	tt := []struct {
+		name string
+	}{
+		{
+			name: "Restart",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			peerConn, myConn := connutil.AsyncPipe()
+
+			peerHandler := NewMockPeerHandler()
+			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			p, err := NewPeer(
+				logger,
+				"MockPeerHandler:0000",
+				peerHandler,
+				wire.MainNet,
+				WithDialer(func(network, address string) (net.Conn, error) {
+					return peerConn, nil
+				}),
+				WithRetryReadWriteMessageInterval(200*time.Millisecond),
+			)
+			require.NoError(t, err)
+
+			t.Log("handshake 1")
+			handshakeFinished := make(chan struct{})
+			go func() {
+				doHandshake(t, p, myConn)
+				handshakeFinished <- struct{}{}
+			}()
+
+			select {
+			case <-handshakeFinished:
+				t.Log("handshake 1 finished")
+			case <-time.After(5 * time.Second):
+				t.Fatal("handshake 1 timeout")
+			}
+			// wait for the peer to be connected
+		connectLoop:
+			for {
+				select {
+				case <-time.NewTicker(10 * time.Millisecond).C:
+					if p.Connected() {
+						break connectLoop
+					}
+				case <-time.NewTimer(1 * time.Second).C:
+					t.Fatal("peer did not connect")
+				}
+			}
+
+			invMsg := wire.NewMsgInv()
+			hash, err := chainhash.NewHashFromStr(tx1)
+			require.NoError(t, err)
+			err = invMsg.AddInvVect(wire.NewInvVect(wire.InvTypeTx, hash))
+			require.NoError(t, err)
+
+			t.Log("restart")
+			p.Restart()
+
+			// wait for the peer to be disconnected
+		disconnectLoop:
+			for {
+				select {
+				case <-time.NewTicker(10 * time.Millisecond).C:
+					if !p.Connected() {
+						break disconnectLoop
+					}
+				case <-time.NewTimer(5 * time.Second).C:
+					t.Fatal("peer did not disconnect")
+				}
+			}
+
+			//time.Sleep(15 * time.Second)
+			// recreate connection
+			p.mu.Lock()
+			peerConn, myConn = connutil.AsyncPipe()
+			p.mu.Unlock()
+			t.Log("new connection created")
+
+			time.Sleep(5 * time.Second)
+			t.Log("handshake 2")
+
+			go func() {
+				doHandshake(t, p, myConn)
+				handshakeFinished <- struct{}{}
+			}()
+
+			select {
+			case <-handshakeFinished:
+				t.Log("handshake 2 finished")
+			case <-time.After(5 * time.Second):
+				t.Fatal("handshake 2 timeout")
+			}
+
+			t.Log("reconnect")
+			// wait for the peer to be reconnected
+		reconnectLoop:
+			for {
+				select {
+				case <-time.NewTicker(10 * time.Millisecond).C:
+					if p.Connected() {
+						break reconnectLoop
+					}
+				case <-time.NewTimer(1 * time.Second).C:
+					t.Fatal("peer did not reconnect")
+				}
+			}
 		})
 	}
 }

@@ -35,6 +35,7 @@ const (
 	sentMsg     = "Sent"
 	receivedMsg = "Recv"
 
+	nrWriteHandlersDefault               = 10
 	retryReadWriteMessageIntervalDefault = 1 * time.Second
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
@@ -74,6 +75,7 @@ type Peer struct {
 	userAgentName                 *string
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
+	nrWriteHandlers               int
 
 	ctx context.Context
 
@@ -107,6 +109,7 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		peerHandler:                   peerHandler,
 		logger:                        peerLogger,
 		dial:                          net.Dial,
+		nrWriteHandlers:               nrWriteHandlersDefault,
 		maximumMessageSize:            defaultMaximumMessageSize,
 		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
 		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
@@ -125,6 +128,12 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		}
 	}
 
+	p.start()
+
+	return p, nil
+}
+
+func (p *Peer) start() {
 	ctx, cancelAll := context.WithCancel(context.Background())
 	p.cancelAll = cancelAll
 	p.ctx = ctx
@@ -140,20 +149,18 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 
 	if p.incomingConn != nil {
 		go func() {
-			connectErr := p.connectAndStartReadWriteHandlers()
-			if connectErr != nil {
+			err := p.connectAndStartReadWriteHandlers()
+			if err != nil {
 				p.logger.Warn("Failed to connect to peer", slog.String(errKey, err.Error()))
 			}
 		}()
 		p.logger.Info("Incoming connection from peer")
-		return p, nil
+		return
 	}
 
 	// reconnect if disconnected, but only on outgoing connections
 	p.reconnectingWg.Add(1)
 	go p.reconnect()
-
-	return p, nil
 }
 
 func (p *Peer) disconnectLock() {
@@ -230,7 +237,7 @@ func (p *Peer) connectAndStartReadWriteHandlers() error {
 
 	writerCtx, cancelWriter := context.WithCancel(p.ctx)
 	p.cancelWriteHandler = cancelWriter
-	for i := 0; i < 10; i++ {
+	for i := 0; i < p.nrWriteHandlers; i++ {
 		// start 10 workers that will write to the peer
 		// locking is done in the net.write in the wire/message handler
 		// this reduces the wait on the writer when processing writes (for example HandleTransactionSent)
@@ -778,7 +785,7 @@ func (p *Peer) pingHandler() {
 		case <-pingTicker.C:
 			nonce, err := wire.RandomUint64()
 			if err != nil {
-				p.logger.Error("Not sending ping", slog.String(errKey, err.Error()))
+				p.logger.Error("Failed to create random nonce - not sending ping", slog.String(errKey, err.Error()))
 				continue
 			}
 			p.writeChan <- wire.NewMsgPing(nonce)
@@ -810,6 +817,7 @@ func (p *Peer) monitorConnectionHealth() {
 		case <-checkConnectionHealthTicker.C:
 			p.mu.Lock()
 			p.isHealthy = false
+			p.logger.Warn("peer unhealthy")
 			p.mu.Unlock()
 		case <-p.ctx.Done():
 			return
@@ -842,6 +850,12 @@ func (p *Peer) stopWriteHandler() {
 	p.cancelWriteHandler()
 	p.logger.Debug("Waiting for writer handlers to stop")
 	p.writerWg.Wait()
+}
+
+func (p *Peer) Restart() {
+	p.Shutdown()
+
+	p.start()
 }
 
 func (p *Peer) Shutdown() {

@@ -18,6 +18,7 @@ type PeerManagerI interface {
 	RequestBlock(blockHash *chainhash.Hash) PeerI
 	AddPeer(peer PeerI) error
 	GetPeers() []PeerI
+	Shutdown()
 }
 
 type PeerI interface {
@@ -30,6 +31,8 @@ type PeerI interface {
 	RequestBlock(blockHash *chainhash.Hash)
 	Network() wire.BitcoinNet
 	IsHealthy() bool
+	Shutdown()
+	Restart()
 }
 
 type PeerHandlerI interface {
