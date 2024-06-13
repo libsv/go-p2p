@@ -86,7 +86,6 @@ type Peer struct {
 	readerWg        *sync.WaitGroup
 	writerWg        *sync.WaitGroup
 	reconnectingWg  *sync.WaitGroup
-	pingHandlerWg   *sync.WaitGroup
 	healthMonitorWg *sync.WaitGroup
 }
 
@@ -116,7 +115,6 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		writerWg:                      &sync.WaitGroup{},
 		readerWg:                      &sync.WaitGroup{},
 		reconnectingWg:                &sync.WaitGroup{},
-		pingHandlerWg:                 &sync.WaitGroup{},
 		healthMonitorWg:               &sync.WaitGroup{},
 	}
 
@@ -138,9 +136,7 @@ func (p *Peer) start() {
 	p.cancelAll = cancelAll
 	p.ctx = ctx
 
-	p.startMonitorConnectionHealth()
-
-	p.startPingHandler()
+	p.startMonitorPingPong()
 
 	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
 	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
@@ -781,36 +777,10 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 	return msg
 }
 
-// startPingHandler periodically pings the peer. It must be run as a goroutine.
-func (p *Peer) startPingHandler() {
-	pingTicker := time.NewTicker(pingInterval)
-
-	p.pingHandlerWg.Add(1)
-	go func() {
-		defer func() {
-			p.pingHandlerWg.Done()
-			pingTicker.Stop()
-		}()
-
-		for {
-			select {
-			case <-pingTicker.C:
-				nonce, err := wire.RandomUint64()
-				if err != nil {
-					p.logger.Error("Failed to create random nonce - not sending ping", slog.String(errKey, err.Error()))
-					continue
-				}
-				p.writeChan <- wire.NewMsgPing(nonce)
-
-			case <-p.ctx.Done():
-				return
-			}
-		}
-	}()
-}
-
-func (p *Peer) startMonitorConnectionHealth() {
+func (p *Peer) startMonitorPingPong() {
 	p.healthMonitorWg.Add(1)
+
+	pingTicker := time.NewTicker(pingInterval)
 
 	go func() {
 		// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
@@ -823,6 +793,13 @@ func (p *Peer) startMonitorConnectionHealth() {
 
 		for {
 			select {
+			case <-pingTicker.C:
+				nonce, err := wire.RandomUint64()
+				if err != nil {
+					p.logger.Error("Failed to create random nonce - not sending ping", slog.String(errKey, err.Error()))
+					continue
+				}
+				p.writeChan <- wire.NewMsgPing(nonce)
 			case <-p.pingPongAlive:
 				p.mu.Lock()
 				p.isHealthy = true
@@ -881,7 +858,6 @@ func (p *Peer) Shutdown() {
 
 	p.reconnectingWg.Wait()
 	p.healthMonitorWg.Wait()
-	p.pingHandlerWg.Wait()
 	p.writerWg.Wait()
 	p.readerWg.Wait()
 }
