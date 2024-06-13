@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"context"
 	"log/slog"
 	"sort"
 	"sync"
@@ -13,12 +14,17 @@ import (
 const defaultExcessiveBlockSize = 4000000000
 
 type PeerManager struct {
-	mu         sync.RWMutex
-	peers      []PeerI
-	network    wire.BitcoinNet
-	batchDelay time.Duration
-	logger     *slog.Logger
-	ebs        int64
+	mu                    sync.RWMutex
+	peers                 []PeerI
+	network               wire.BitcoinNet
+	batchDelay            time.Duration
+	logger                *slog.Logger
+	ebs                   int64
+	restartUnhealthyPeers bool
+	monitorPeersInterval  time.Duration
+	waitGroup             sync.WaitGroup
+	cancelAll             context.CancelFunc
+	ctx                   context.Context
 }
 
 // NewPeerManager creates a new PeerManager
@@ -28,18 +34,28 @@ type PeerManager struct {
 func NewPeerManager(logger *slog.Logger, network wire.BitcoinNet, options ...PeerManagerOptions) PeerManagerI {
 
 	pm := &PeerManager{
-		peers:   make([]PeerI, 0),
-		network: network,
-		logger:  logger,
-		ebs:     defaultExcessiveBlockSize,
+		peers:                 make([]PeerI, 0),
+		network:               network,
+		logger:                logger,
+		ebs:                   defaultExcessiveBlockSize,
+		restartUnhealthyPeers: false,
+		waitGroup:             sync.WaitGroup{},
 	}
 
 	for _, option := range options {
 		option(pm)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	pm.ctx = ctx
+	pm.cancelAll = cancel
+
 	logger.Info("Excessive block size set to", slog.Int64("block size", pm.ebs))
 	wire.SetLimits(uint64(pm.ebs))
+
+	if pm.restartUnhealthyPeers {
+		pm.StartMonitorPeerHealth()
+	}
 
 	return pm
 }
@@ -68,9 +84,36 @@ func (pm *PeerManager) GetPeers() []PeerI {
 }
 
 func (pm *PeerManager) Shutdown() {
+
+	if pm.cancelAll != nil {
+		pm.cancelAll()
+		pm.waitGroup.Wait()
+	}
+
 	for _, peer := range pm.peers {
 		peer.Shutdown()
 	}
+}
+
+func (pm *PeerManager) StartMonitorPeerHealth() {
+	ticker := time.NewTicker(pm.monitorPeersInterval)
+	pm.waitGroup.Add(1)
+	go func() {
+		defer pm.waitGroup.Done()
+		for {
+			select {
+			case <-pm.ctx.Done():
+				return
+			case <-ticker.C:
+				for _, peer := range pm.GetPeers() {
+					if !peer.IsHealthy() {
+						pm.logger.Warn("peer unhealthy - restarting", slog.String("address", peer.String()), slog.Bool("connected", peer.Connected()))
+						peer.Restart()
+					}
+				}
+			}
+		}
+	}()
 }
 
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil
@@ -80,15 +123,11 @@ func (pm *PeerManager) AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI
 		peers = pm.GetAnnouncedPeers()
 	}
 
-	announcedPeers := make([]PeerI, 0, len(peers))
 	for _, peer := range peers {
-		if peer.Connected() && peer.IsHealthy() {
-			peer.AnnounceTransaction(txHash)
-			announcedPeers = append(announcedPeers, peer)
-		}
+		peer.AnnounceTransaction(txHash)
 	}
 
-	return announcedPeers
+	return peers
 }
 
 func (pm *PeerManager) RequestTransaction(txHash *chainhash.Hash) PeerI {
