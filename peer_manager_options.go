@@ -15,3 +15,10 @@ func WithExcessiveBlockSize(ebs int64) PeerManagerOptions {
 		p.ebs = ebs
 	}
 }
+
+func WithRestartUnhealthyPeers(monitorPeersInterval time.Duration) PeerManagerOptions {
+	return func(p *PeerManager) {
+		p.restartUnhealthyPeers = true
+		p.monitorPeersInterval = monitorPeersInterval
+	}
+}
