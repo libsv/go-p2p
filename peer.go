@@ -338,7 +338,9 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 		return msg, nil
 	}
 
-	if errors.Is(err, io.EOF) {
+	if errors.Is(err, context.Canceled) {
+		return nil, err
+	} else if errors.Is(err, io.EOF) {
 		p.logger.Error("Failed to read message: EOF", slog.String(errKey, err.Error()))
 	} else {
 		p.logger.Error("Failed to read message", slog.String(errKey, err.Error()))
@@ -347,7 +349,6 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 	counter := 0
 	ticker := time.NewTicker(p.retryReadWriteMessageInterval)
 
-	var readMessageErr error
 	for {
 		counter++
 		if counter >= retryReadWriteMessageAttempts {
@@ -358,8 +359,11 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-ticker.C:
-			msg, readMessageErr = p.readMessage(ctx, r, pver, bsvnet)
+			msg, err = p.readMessage(ctx, r, pver, bsvnet)
 			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil, err
+				}
 				if errors.Is(err, io.EOF) {
 					p.logger.Error("Failed to read message: EOF", slog.String(errKey, err.Error()))
 					continue
@@ -373,7 +377,7 @@ func (p *Peer) readRetry(ctx context.Context, r io.Reader, pver uint32, bsvnet w
 		}
 	}
 
-	return nil, readMessageErr
+	return nil, err
 }
 
 func (p *Peer) startReadHandler(ctx context.Context) {
