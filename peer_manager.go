@@ -96,24 +96,24 @@ func (pm *PeerManager) Shutdown() {
 }
 
 func (pm *PeerManager) StartMonitorPeerHealth() {
-	ticker := time.NewTicker(pm.monitorPeersInterval)
-	pm.waitGroup.Add(1)
-	go func() {
-		defer pm.waitGroup.Done()
-		for {
-			select {
-			case <-pm.ctx.Done():
-				return
-			case <-ticker.C:
-				for _, peer := range pm.GetPeers() {
-					if !peer.IsHealthy() {
-						pm.logger.Warn("peer unhealthy - restarting", slog.String("address", peer.String()), slog.Bool("connected", peer.Connected()))
-						peer.Restart()
-					}
+
+	for _, peer := range pm.peers {
+		pm.waitGroup.Add(1)
+		go func(p PeerI) {
+			defer func() {
+				pm.waitGroup.Done()
+			}()
+			for {
+				select {
+				case <-pm.ctx.Done():
+					return
+				case <-p.IsUnhealthyCh():
+					pm.logger.Warn("peer unhealthy - restarting", slog.String("address", p.String()), slog.Bool("connected", p.Connected()))
+					p.Restart()
 				}
 			}
-		}
-	}()
+		}(peer)
+	}
 }
 
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil
