@@ -47,6 +47,10 @@ func (p *PeerMock) IsHealthy() bool {
 	return true
 }
 
+func (p *PeerMock) IsUnhealthyCh() <-chan struct{} {
+	return make(<-chan struct{})
+}
+
 func (p *PeerMock) Connected() bool {
 	return true
 }

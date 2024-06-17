@@ -40,8 +40,8 @@ const (
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
 
-	pingInterval                   = 2 * time.Minute
-	connectionHealthTickerDuration = 3 * time.Minute
+	pingInterval                   = 30 * time.Second
+	connectionHealthTickerDuration = 1 * time.Minute
 )
 
 type Block struct {
@@ -76,6 +76,7 @@ type Peer struct {
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
 	nrWriteHandlers               int
+	isUnhealthyCh                 chan struct{}
 
 	ctx context.Context
 
@@ -105,6 +106,7 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		address:                       address,
 		writeChan:                     writeChan,
 		pingPongAlive:                 make(chan struct{}, 1),
+		isUnhealthyCh:                 make(chan struct{}),
 		peerHandler:                   peerHandler,
 		logger:                        peerLogger,
 		dial:                          net.Dial,
@@ -792,11 +794,11 @@ func (p *Peer) startMonitorPingPong() {
 
 	go func() {
 		// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
-		checkConnectionHealthTicker := time.NewTicker(connectionHealthTickerDuration)
+		monitorConnectionTicker := time.NewTicker(connectionHealthTickerDuration)
 
 		defer func() {
 			p.healthMonitorWg.Done()
-			checkConnectionHealthTicker.Stop()
+			monitorConnectionTicker.Stop()
 		}()
 
 		for {
@@ -809,16 +811,19 @@ func (p *Peer) startMonitorPingPong() {
 				}
 				p.writeChan <- wire.NewMsgPing(nonce)
 			case <-p.pingPongAlive:
-				p.mu.Lock()
-				p.isHealthy = true
-				p.mu.Unlock()
-
-				// if ping/pong is received signal reset the ticker
-				checkConnectionHealthTicker.Reset(connectionHealthTickerDuration)
-			case <-checkConnectionHealthTicker.C:
+				// if ping/pong signal is received reset the ticker
+				monitorConnectionTicker.Reset(connectionHealthTickerDuration)
+				p.setHealthy()
+			case <-monitorConnectionTicker.C:
 
 				p.mu.Lock()
 				p.isHealthy = false
+
+				select {
+				case p.isUnhealthyCh <- struct{}{}:
+				default: // Do not block if nothing is ready from channel
+				}
+
 				p.logger.Warn("peer unhealthy")
 				p.mu.Unlock()
 			case <-p.ctx.Done():
@@ -826,6 +831,22 @@ func (p *Peer) startMonitorPingPong() {
 			}
 		}
 	}()
+}
+
+func (p *Peer) IsUnhealthyCh() <-chan struct{} {
+	return p.isUnhealthyCh
+}
+
+func (p *Peer) setHealthy() {
+
+	p.mu.Lock()
+	if p.isHealthy {
+		p.mu.Unlock()
+		return
+	}
+	p.logger.Warn("peer healthy")
+	p.isHealthy = true
+	p.mu.Unlock()
 }
 
 func (p *Peer) IsHealthy() bool {
