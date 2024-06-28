@@ -21,7 +21,6 @@ type PeerManager struct {
 	logger                *slog.Logger
 	ebs                   int64
 	restartUnhealthyPeers bool
-	monitorPeersInterval  time.Duration
 	waitGroup             sync.WaitGroup
 	cancelAll             context.CancelFunc
 	ctx                   context.Context

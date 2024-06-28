@@ -40,8 +40,8 @@ const (
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
 
-	pingInterval                   = 30 * time.Second
-	connectionHealthTickerDuration = 1 * time.Minute
+	pingIntervalDefault                   = 30 * time.Second
+	connectionHealthTickerDurationDefault = 1 * time.Minute
 )
 
 type Block struct {
@@ -77,8 +77,9 @@ type Peer struct {
 	retryReadWriteMessageInterval time.Duration
 	nrWriteHandlers               int
 	isUnhealthyCh                 chan struct{}
-
-	ctx context.Context
+	pingInterval                  time.Duration
+	connectionHealthThreshold     time.Duration
+	ctx                           context.Context
 
 	cancelReadHandler  context.CancelFunc
 	cancelWriteHandler context.CancelFunc
@@ -114,6 +115,8 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		maximumMessageSize:            defaultMaximumMessageSize,
 		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
 		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
+		pingInterval:                  pingIntervalDefault,
+		connectionHealthThreshold:     connectionHealthTickerDurationDefault,
 		writerWg:                      &sync.WaitGroup{},
 		readerWg:                      &sync.WaitGroup{},
 		reconnectingWg:                &sync.WaitGroup{},
@@ -790,11 +793,11 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 func (p *Peer) startMonitorPingPong() {
 	p.healthMonitorWg.Add(1)
 
-	pingTicker := time.NewTicker(pingInterval)
+	pingTicker := time.NewTicker(p.pingInterval)
 
 	go func() {
 		// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
-		monitorConnectionTicker := time.NewTicker(connectionHealthTickerDuration)
+		monitorConnectionTicker := time.NewTicker(p.connectionHealthThreshold)
 
 		defer func() {
 			p.healthMonitorWg.Done()
@@ -812,7 +815,7 @@ func (p *Peer) startMonitorPingPong() {
 				p.writeChan <- wire.NewMsgPing(nonce)
 			case <-p.pingPongAlive:
 				// if ping/pong signal is received reset the ticker
-				monitorConnectionTicker.Reset(connectionHealthTickerDuration)
+				monitorConnectionTicker.Reset(p.connectionHealthThreshold)
 				p.setHealthy()
 			case <-monitorConnectionTicker.C:
 
