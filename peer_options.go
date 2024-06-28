@@ -61,3 +61,14 @@ func WithNrOfWriteHandlers(NrWriteHandlers int) PeerOptions {
 		return nil
 	}
 }
+
+// WithPingInterval sets the optional time duration ping interval and connection health threshold
+// ping interval is the time interval in which the peer sends a ping
+// connection health threshold is the time duration after which the connection is marked unhealthy if no signal is received
+func WithPingInterval(pingInterval time.Duration, connectionHealthThreshold time.Duration) PeerOptions {
+	return func(p *Peer) error {
+		p.pingInterval = pingInterval
+		p.connectionHealthThreshold = connectionHealthThreshold
+		return nil
+	}
+}
