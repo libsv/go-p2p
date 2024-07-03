@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-
 	"log/slog"
 
 	"github.com/libsv/go-p2p"
@@ -15,10 +14,10 @@ type SimplePeerHandler struct {
 	logger *slog.Logger
 }
 
-func (s *SimplePeerHandler) HandleTransactionGet(msg *wire.InvVect, peer p2p.PeerI) ([]byte, error) {
-	s.logger.Info("Peer requested transaction", slog.String("hash", msg.Hash.String()), slog.String("peer", peer.String()))
-	// You should implement a store and return the transaction bytes here.
-	return nil, fmt.Errorf("transaction not found")
+func (s *SimplePeerHandler) HandleTransactionsGet(msg []*wire.InvVect, peer p2p.PeerI) ([][]byte, error) {
+	s.logger.Info("Peer requested transactions", slog.Int("count", len(msg)), slog.String("peer", peer.String()))
+	// You should implement a store and return the transactions bytes here.
+	return nil, fmt.Errorf("transactions not found")
 }
 
 func (s *SimplePeerHandler) HandleTransactionSent(msg *wire.MsgTx, peer p2p.PeerI) error {

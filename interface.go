@@ -36,7 +36,7 @@ type PeerI interface {
 }
 
 type PeerHandlerI interface {
-	HandleTransactionGet(msg *wire.InvVect, peer PeerI) ([]byte, error)
+	HandleTransactionsGet(msg []*wire.InvVect, peer PeerI) ([][]byte, error)
 	HandleTransactionSent(msg *wire.MsgTx, peer PeerI) error
 	HandleTransactionAnnouncement(msg *wire.InvVect, peer PeerI) error
 	HandleTransactionRejection(rejMsg *wire.MsgReject, peer PeerI) error
