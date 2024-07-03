@@ -571,7 +571,7 @@ func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
 
 	rawTxs, err := p.peerHandler.HandleTransactionsGet(txRequests, p)
 	if err != nil {
-		logger.Warn("Unable to fetch txs from store", slog.String(errKey, err.Error()))
+		logger.Warn("Unable to fetch txs from store", slog.Int("count", len(txRequests)), slog.String(errKey, err.Error()))
 		return
 	}
 

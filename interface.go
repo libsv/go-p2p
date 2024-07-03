@@ -7,9 +7,7 @@ import (
 	"github.com/libsv/go-p2p/wire"
 )
 
-var (
-	ErrPeerNetworkMismatch = fmt.Errorf("peer network mismatch")
-)
+var ErrPeerNetworkMismatch = fmt.Errorf("peer network mismatch")
 
 type PeerManagerI interface {
 	AnnounceTransaction(txHash *chainhash.Hash, peers []PeerI) []PeerI
@@ -36,7 +34,7 @@ type PeerI interface {
 }
 
 type PeerHandlerI interface {
-	HandleTransactionsGet(msg []*wire.InvVect, peer PeerI) ([][]byte, error)
+	HandleTransactionsGet(msgs []*wire.InvVect, peer PeerI) ([][]byte, error)
 	HandleTransactionSent(msg *wire.MsgTx, peer PeerI) error
 	HandleTransactionAnnouncement(msg *wire.InvVect, peer PeerI) error
 	HandleTransactionRejection(rejMsg *wire.MsgReject, peer PeerI) error

@@ -14,8 +14,8 @@ type SimplePeerHandler struct {
 	logger *slog.Logger
 }
 
-func (s *SimplePeerHandler) HandleTransactionsGet(msg []*wire.InvVect, peer p2p.PeerI) ([][]byte, error) {
-	s.logger.Info("Peer requested transactions", slog.Int("count", len(msg)), slog.String("peer", peer.String()))
+func (s *SimplePeerHandler) HandleTransactionsGet(msgs []*wire.InvVect, peer p2p.PeerI) ([][]byte, error) {
+	s.logger.Info("Peer requested transactions", slog.Int("count", len(msgs)), slog.String("peer", peer.String()))
 	// You should implement a store and return the transactions bytes here.
 	return nil, fmt.Errorf("transactions not found")
 }
