@@ -683,17 +683,15 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context, instance int) {
 				p.logger.Debug("Write handler canceled", slog.Int("instance", instance))
 				return
 			case msg := <-p.writeChan:
+				p.mu.RLock()
+				writeConn := p.writeConn
+				p.mu.RUnlock()
 
-				for {
-					p.mu.RLock()
-					writeConn := p.writeConn
-					p.mu.RUnlock()
-
-					if writeConn != nil {
-						break
-					}
+				if writeConn == nil {
 					time.Sleep(100 * time.Millisecond)
+					continue
 				}
+
 				err := p.writeRetry(ctx, msg)
 				if err != nil {
 					if errors.Is(err, context.Canceled) {
@@ -732,6 +730,7 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context, instance int) {
 					case *wire.MsgGetData:
 						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.InvList[0].Hash.String()), slog.String(typeKey, "getdata"))
 					case *wire.MsgInv:
+						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(hashKey, m.InvList[0].Hash.String()), slog.String(typeKey, "inv"))
 					default:
 						p.logger.Debug(sentMsg, slog.String(commandKey, strings.ToUpper(message.Command())), slog.String(typeKey, "unknown"))
 					}
