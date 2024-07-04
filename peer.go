@@ -554,18 +554,17 @@ func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
 
 	for _, invVect := range dataMsg.InvList {
 		switch invVect.Type {
-
 		case wire.InvTypeTx:
 			logger.Debug("Request for TX", slog.String(hashKey, invVect.Hash.String()))
 			txRequests = append(txRequests, invVect)
 
 		case wire.InvTypeBlock:
 			logger.Info("Request for block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
-			return
+			continue
 
 		default:
 			logger.Warn("Unknown type", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
-			return
+			continue
 		}
 	}
 
