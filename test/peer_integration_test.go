@@ -2,12 +2,13 @@ package test
 
 import (
 	"fmt"
-	"github.com/libsv/go-p2p"
 	"log"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/libsv/go-p2p"
 
 	"github.com/libsv/go-p2p/wire"
 	"github.com/ory/dockertest/v3"
@@ -19,7 +20,7 @@ const (
 	p2pPortBinding = "18335"
 )
 
-//go:generate moq -out ./peer_handler_gen_mock.go . PeerHandlerI
+//go:generate moq -out ../peer_handler_gen_mock.go ../ PeerHandlerI
 
 var (
 	pool     *dockertest.Pool
@@ -148,15 +149,14 @@ func TestNewPeer(t *testing.T) {
 	})
 
 	t.Run("announce transaction", func(t *testing.T) {
-
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 		pm := p2p.NewPeerManager(logger, wire.TestNet)
 		require.NotNil(t, pm)
 
 		peerHandler := &p2p.PeerHandlerIMock{
-			HandleTransactionGetFunc: func(msg *wire.InvVect, peer p2p.PeerI) ([]byte, error) {
-				return TX1RawBytes, nil
+			HandleTransactionsGetFunc: func(msgs []*wire.InvVect, peer p2p.PeerI) ([][]byte, error) {
+				return [][]byte{TX1RawBytes}, nil
 			},
 		}
 

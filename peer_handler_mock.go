@@ -27,17 +27,23 @@ func NewMockPeerHandler() *MockPeerHandler {
 	}
 }
 
-func (m *MockPeerHandler) HandleTransactionGet(msg *wire.InvVect, _ PeerI) ([]byte, error) {
+func (m *MockPeerHandler) HandleTransactionsGet(msgs []*wire.InvVect, _ PeerI) ([][]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.transactionGet = append(m.transactionGet, *msg)
+	rawTxs := make([][]byte, 0)
 
-	bytes, ok := m.transactionGetBytes[msg.Hash.String()]
-	if !ok {
-		return nil, fmt.Errorf("no bytes for transaction %s", msg.Hash.String())
+	for _, msg := range msgs {
+		m.transactionGet = append(m.transactionGet, *msg)
+		bytes, ok := m.transactionGetBytes[msg.Hash.String()]
+		if !ok {
+			return nil, fmt.Errorf("no bytes for transaction %s", msg.Hash.String())
+		}
+
+		rawTxs = append(rawTxs, bytes)
 	}
-	return bytes, nil
+
+	return rawTxs, nil
 }
 
 func (m *MockPeerHandler) GetTransactionGet() []wire.InvVect {

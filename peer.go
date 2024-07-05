@@ -550,36 +550,43 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 }
 
 func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
+	txRequests := make([]*wire.InvVect, 0)
+
 	for _, invVect := range dataMsg.InvList {
 		switch invVect.Type {
 		case wire.InvTypeTx:
 			logger.Debug("Request for TX", slog.String(hashKey, invVect.Hash.String()))
-
-			txBytes, err := p.peerHandler.HandleTransactionGet(invVect, p)
-			if err != nil {
-				logger.Warn("Unable to fetch tx from store", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
-				continue
-			}
-
-			if txBytes == nil {
-				logger.Warn("tx does not exist", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
-				continue
-			}
-
-			tx, err := bsvutil.NewTxFromBytes(txBytes)
-			if err != nil {
-				logger.Error("failed to parse tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String("rawHex", hex.EncodeToString(txBytes)), slog.String(errKey, err.Error()))
-				continue
-			}
-
-			p.writeChan <- tx.MsgTx()
+			txRequests = append(txRequests, invVect)
 
 		case wire.InvTypeBlock:
 			logger.Info("Request for block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
+			continue
 
 		default:
 			logger.Warn("Unknown type", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()))
+			continue
 		}
+	}
+
+	rawTxs, err := p.peerHandler.HandleTransactionsGet(txRequests, p)
+	if err != nil {
+		logger.Warn("Unable to fetch txs from store", slog.Int("count", len(txRequests)), slog.String(errKey, err.Error()))
+		return
+	}
+
+	for _, txBytes := range rawTxs {
+		if txBytes == nil {
+			logger.Warn("tx does not exist")
+			continue
+		}
+
+		tx, err := bsvutil.NewTxFromBytes(txBytes)
+		if err != nil {
+			logger.Error("failed to parse tx", slog.String("rawHex", hex.EncodeToString(txBytes)), slog.String(errKey, err.Error()))
+			continue
+		}
+
+		p.writeChan <- tx.MsgTx()
 	}
 }
 

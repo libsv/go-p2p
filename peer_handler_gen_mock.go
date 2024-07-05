@@ -30,14 +30,14 @@ var _ PeerHandlerI = &PeerHandlerIMock{}
 //			HandleTransactionAnnouncementFunc: func(msg *wire.InvVect, peer PeerI) error {
 //				panic("mock out the HandleTransactionAnnouncement method")
 //			},
-//			HandleTransactionGetFunc: func(msg *wire.InvVect, peer PeerI) ([]byte, error) {
-//				panic("mock out the HandleTransactionGet method")
-//			},
 //			HandleTransactionRejectionFunc: func(rejMsg *wire.MsgReject, peer PeerI) error {
 //				panic("mock out the HandleTransactionRejection method")
 //			},
 //			HandleTransactionSentFunc: func(msg *wire.MsgTx, peer PeerI) error {
 //				panic("mock out the HandleTransactionSent method")
+//			},
+//			HandleTransactionsGetFunc: func(msgs []*wire.InvVect, peer PeerI) ([][]byte, error) {
+//				panic("mock out the HandleTransactionsGet method")
 //			},
 //		}
 //
@@ -58,14 +58,14 @@ type PeerHandlerIMock struct {
 	// HandleTransactionAnnouncementFunc mocks the HandleTransactionAnnouncement method.
 	HandleTransactionAnnouncementFunc func(msg *wire.InvVect, peer PeerI) error
 
-	// HandleTransactionGetFunc mocks the HandleTransactionGet method.
-	HandleTransactionGetFunc func(msg *wire.InvVect, peer PeerI) ([]byte, error)
-
 	// HandleTransactionRejectionFunc mocks the HandleTransactionRejection method.
 	HandleTransactionRejectionFunc func(rejMsg *wire.MsgReject, peer PeerI) error
 
 	// HandleTransactionSentFunc mocks the HandleTransactionSent method.
 	HandleTransactionSentFunc func(msg *wire.MsgTx, peer PeerI) error
+
+	// HandleTransactionsGetFunc mocks the HandleTransactionsGet method.
+	HandleTransactionsGetFunc func(msgs []*wire.InvVect, peer PeerI) ([][]byte, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -97,13 +97,6 @@ type PeerHandlerIMock struct {
 			// Peer is the peer argument value.
 			Peer PeerI
 		}
-		// HandleTransactionGet holds details about calls to the HandleTransactionGet method.
-		HandleTransactionGet []struct {
-			// Msg is the msg argument value.
-			Msg *wire.InvVect
-			// Peer is the peer argument value.
-			Peer PeerI
-		}
 		// HandleTransactionRejection holds details about calls to the HandleTransactionRejection method.
 		HandleTransactionRejection []struct {
 			// RejMsg is the rejMsg argument value.
@@ -118,14 +111,21 @@ type PeerHandlerIMock struct {
 			// Peer is the peer argument value.
 			Peer PeerI
 		}
+		// HandleTransactionsGet holds details about calls to the HandleTransactionsGet method.
+		HandleTransactionsGet []struct {
+			// Msgs is the msgs argument value.
+			Msgs []*wire.InvVect
+			// Peer is the peer argument value.
+			Peer PeerI
+		}
 	}
 	lockHandleBlock                   sync.RWMutex
 	lockHandleBlockAnnouncement       sync.RWMutex
 	lockHandleTransaction             sync.RWMutex
 	lockHandleTransactionAnnouncement sync.RWMutex
-	lockHandleTransactionGet          sync.RWMutex
 	lockHandleTransactionRejection    sync.RWMutex
 	lockHandleTransactionSent         sync.RWMutex
+	lockHandleTransactionsGet         sync.RWMutex
 }
 
 // HandleBlock calls HandleBlockFunc.
@@ -272,42 +272,6 @@ func (mock *PeerHandlerIMock) HandleTransactionAnnouncementCalls() []struct {
 	return calls
 }
 
-// HandleTransactionGet calls HandleTransactionGetFunc.
-func (mock *PeerHandlerIMock) HandleTransactionGet(msg *wire.InvVect, peer PeerI) ([]byte, error) {
-	if mock.HandleTransactionGetFunc == nil {
-		panic("PeerHandlerIMock.HandleTransactionGetFunc: method is nil but PeerHandlerI.HandleTransactionGet was just called")
-	}
-	callInfo := struct {
-		Msg  *wire.InvVect
-		Peer PeerI
-	}{
-		Msg:  msg,
-		Peer: peer,
-	}
-	mock.lockHandleTransactionGet.Lock()
-	mock.calls.HandleTransactionGet = append(mock.calls.HandleTransactionGet, callInfo)
-	mock.lockHandleTransactionGet.Unlock()
-	return mock.HandleTransactionGetFunc(msg, peer)
-}
-
-// HandleTransactionGetCalls gets all the calls that were made to HandleTransactionGet.
-// Check the length with:
-//
-//	len(mockedPeerHandlerI.HandleTransactionGetCalls())
-func (mock *PeerHandlerIMock) HandleTransactionGetCalls() []struct {
-	Msg  *wire.InvVect
-	Peer PeerI
-} {
-	var calls []struct {
-		Msg  *wire.InvVect
-		Peer PeerI
-	}
-	mock.lockHandleTransactionGet.RLock()
-	calls = mock.calls.HandleTransactionGet
-	mock.lockHandleTransactionGet.RUnlock()
-	return calls
-}
-
 // HandleTransactionRejection calls HandleTransactionRejectionFunc.
 func (mock *PeerHandlerIMock) HandleTransactionRejection(rejMsg *wire.MsgReject, peer PeerI) error {
 	if mock.HandleTransactionRejectionFunc == nil {
@@ -377,5 +341,41 @@ func (mock *PeerHandlerIMock) HandleTransactionSentCalls() []struct {
 	mock.lockHandleTransactionSent.RLock()
 	calls = mock.calls.HandleTransactionSent
 	mock.lockHandleTransactionSent.RUnlock()
+	return calls
+}
+
+// HandleTransactionsGet calls HandleTransactionsGetFunc.
+func (mock *PeerHandlerIMock) HandleTransactionsGet(msgs []*wire.InvVect, peer PeerI) ([][]byte, error) {
+	if mock.HandleTransactionsGetFunc == nil {
+		panic("PeerHandlerIMock.HandleTransactionsGetFunc: method is nil but PeerHandlerI.HandleTransactionsGet was just called")
+	}
+	callInfo := struct {
+		Msgs []*wire.InvVect
+		Peer PeerI
+	}{
+		Msgs: msgs,
+		Peer: peer,
+	}
+	mock.lockHandleTransactionsGet.Lock()
+	mock.calls.HandleTransactionsGet = append(mock.calls.HandleTransactionsGet, callInfo)
+	mock.lockHandleTransactionsGet.Unlock()
+	return mock.HandleTransactionsGetFunc(msgs, peer)
+}
+
+// HandleTransactionsGetCalls gets all the calls that were made to HandleTransactionsGet.
+// Check the length with:
+//
+//	len(mockedPeerHandlerI.HandleTransactionsGetCalls())
+func (mock *PeerHandlerIMock) HandleTransactionsGetCalls() []struct {
+	Msgs []*wire.InvVect
+	Peer PeerI
+} {
+	var calls []struct {
+		Msgs []*wire.InvVect
+		Peer PeerI
+	}
+	mock.lockHandleTransactionsGet.RLock()
+	calls = mock.calls.HandleTransactionsGet
+	mock.lockHandleTransactionsGet.RUnlock()
 	return calls
 }
