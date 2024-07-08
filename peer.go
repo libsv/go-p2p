@@ -174,9 +174,10 @@ func (p *Peer) reconnect() {
 			p.logger.Warn("Failed to connect to peer", slog.String(errKey, connectErr.Error()))
 		}
 
+		ticker := time.NewTicker(reconnectInterval)
 		for {
 			select {
-			case <-time.NewTicker(reconnectInterval).C:
+			case <-ticker.C:
 				if p.Connected() || p.Connecting() {
 					continue
 				}
