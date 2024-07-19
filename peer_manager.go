@@ -83,6 +83,7 @@ func (pm *PeerManager) GetPeers() []PeerI {
 }
 
 func (pm *PeerManager) Shutdown() {
+	pm.logger.Info("Shutting down peer manager")
 
 	if pm.cancelAll != nil {
 		pm.cancelAll()

@@ -137,6 +137,9 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 }
 
 func (p *Peer) start() {
+
+	p.logger.Info("Starting peer")
+
 	ctx, cancelAll := context.WithCancel(context.Background())
 	p.cancelAll = cancelAll
 	p.ctx = ctx
@@ -886,10 +889,14 @@ func (p *Peer) Restart() {
 }
 
 func (p *Peer) Shutdown() {
+	p.logger.Info("Shutting down")
+
 	p.cancelAll()
 
 	p.reconnectingWg.Wait()
 	p.healthMonitorWg.Wait()
 	p.writerWg.Wait()
 	p.readerWg.Wait()
+
+	p.logger.Info("Shutdown complete")
 }
