@@ -148,4 +148,47 @@ func TestNewPeer(t *testing.T) {
 		t.Log("shutdown finished")
 	})
 
+	t.Run("restart", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		peerHandler := p2p.NewMockPeerHandler()
+
+		peer, err := p2p.NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet, p2p.WithUserAgent("agent", "0.0.1"))
+		require.NoError(t, err)
+
+		t.Log("expect that peer has connected")
+	connectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break connectLoop
+				}
+			case <-time.NewTimer(5 * time.Second).C:
+				t.Fatal("peer did not connect")
+			}
+		}
+
+		t.Log("restart peer")
+		peer.Restart()
+
+		t.Log("expect that peer has re-established connection")
+	reconnectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break reconnectLoop
+				}
+			case <-time.NewTimer(2 * time.Second).C:
+				t.Fatal("peer did not reconnect")
+			}
+		}
+
+		require.NoError(t, err)
+
+		t.Log("shutdown")
+		peer.Shutdown()
+		t.Log("shutdown finished")
+	})
 }
