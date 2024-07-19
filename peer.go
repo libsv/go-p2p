@@ -71,7 +71,7 @@ type Peer struct {
 	invBatcher                    *batcher.Batcher[chainhash.Hash]
 	dataBatcher                   *batcher.Batcher[chainhash.Hash]
 	maximumMessageSize            int64
-	isHealthy                     bool
+	isHealthy                     atomic.Bool
 	userAgentName                 *string
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
@@ -822,8 +822,7 @@ func (p *Peer) startMonitorPingPong() {
 				p.setHealthy()
 			case <-monitorConnectionTicker.C:
 
-				p.mu.Lock()
-				p.isHealthy = false
+				p.isHealthy.Store(false)
 
 				select {
 				case p.isUnhealthyCh <- struct{}{}:
@@ -831,7 +830,6 @@ func (p *Peer) startMonitorPingPong() {
 				}
 
 				p.logger.Warn("peer unhealthy")
-				p.mu.Unlock()
 			case <-p.ctx.Done():
 				return
 			}
@@ -845,21 +843,16 @@ func (p *Peer) IsUnhealthyCh() <-chan struct{} {
 
 func (p *Peer) setHealthy() {
 
-	p.mu.Lock()
-	if p.isHealthy {
-		p.mu.Unlock()
+	if p.isHealthy.Load() {
 		return
 	}
-	p.logger.Warn("peer healthy")
-	p.isHealthy = true
-	p.mu.Unlock()
+
+	p.logger.Info("peer healthy")
+	p.isHealthy.Store(true)
 }
 
 func (p *Peer) IsHealthy() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	return p.isHealthy
+	return p.isHealthy.Load()
 }
 
 func (p *Peer) stopReadHandler() {
