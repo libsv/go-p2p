@@ -39,7 +39,7 @@ func TestNewPeerManager(t *testing.T) {
 		err = pm.AddPeer(peer)
 		require.NoError(t, err)
 		assert.Len(t, pm.GetPeers(), 1)
-		peer.Shutdown()
+		pm.Shutdown()
 	})
 
 	t.Run("1 peer - de dup", func(t *testing.T) {
@@ -64,9 +64,7 @@ func TestNewPeerManager(t *testing.T) {
 
 		assert.Len(t, pm.GetPeers(), 4)
 
-		for _, peer := range peers {
-			peer.Shutdown()
-		}
+		pm.Shutdown()
 	})
 }
 
