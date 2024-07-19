@@ -855,26 +855,6 @@ func (p *Peer) IsHealthy() bool {
 	return p.isHealthy.Load()
 }
 
-func (p *Peer) stopReadHandler() {
-	if p.cancelReadHandler == nil {
-		return
-	}
-	p.logger.Debug("Cancelling read handlers")
-	p.cancelReadHandler()
-	p.logger.Debug("Waiting for read handlers to stop")
-	p.readerWg.Wait()
-}
-
-func (p *Peer) stopWriteHandler() {
-	if p.cancelWriteHandler == nil {
-		return
-	}
-	p.logger.Debug("Cancelling write handlers")
-	p.cancelWriteHandler()
-	p.logger.Debug("Waiting for writer handlers to stop")
-	p.writerWg.Wait()
-}
-
 func (p *Peer) Restart() {
 	p.Shutdown()
 
