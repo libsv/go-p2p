@@ -100,9 +100,7 @@ func (pm *PeerManager) StartMonitorPeerHealth() {
 	for _, peer := range pm.peers {
 		pm.waitGroup.Add(1)
 		go func(p PeerI) {
-			defer func() {
-				pm.waitGroup.Done()
-			}()
+			defer pm.waitGroup.Done()
 			for {
 				select {
 				case <-pm.ctx.Done():

@@ -40,8 +40,8 @@ const (
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
 
-	pingIntervalDefault                   = 30 * time.Second
-	connectionHealthTickerDurationDefault = 1 * time.Minute
+	pingIntervalDefault                   = 2 * time.Minute
+	connectionHealthTickerDurationDefault = 3 * time.Minute
 )
 
 type Block struct {
