@@ -40,8 +40,8 @@ const (
 	retryReadWriteMessageAttempts        = 5
 	reconnectInterval                    = 10 * time.Second
 
-	pingInterval                   = 2 * time.Minute
-	connectionHealthTickerDuration = 3 * time.Minute
+	pingIntervalDefault                   = 2 * time.Minute
+	connectionHealthTickerDurationDefault = 3 * time.Minute
 )
 
 type Block struct {
@@ -71,13 +71,15 @@ type Peer struct {
 	invBatcher                    *batcher.Batcher[chainhash.Hash]
 	dataBatcher                   *batcher.Batcher[chainhash.Hash]
 	maximumMessageSize            int64
-	isHealthy                     bool
+	isHealthy                     atomic.Bool
 	userAgentName                 *string
 	userAgentVersion              *string
 	retryReadWriteMessageInterval time.Duration
 	nrWriteHandlers               int
-
-	ctx context.Context
+	isUnhealthyCh                 chan struct{}
+	pingInterval                  time.Duration
+	connectionHealthThreshold     time.Duration
+	ctx                           context.Context
 
 	cancelReadHandler  context.CancelFunc
 	cancelWriteHandler context.CancelFunc
@@ -105,6 +107,7 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		address:                       address,
 		writeChan:                     writeChan,
 		pingPongAlive:                 make(chan struct{}, 1),
+		isUnhealthyCh:                 make(chan struct{}),
 		peerHandler:                   peerHandler,
 		logger:                        peerLogger,
 		dial:                          net.Dial,
@@ -112,6 +115,8 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		maximumMessageSize:            defaultMaximumMessageSize,
 		batchDelay:                    defaultBatchDelayMilliseconds * time.Millisecond,
 		retryReadWriteMessageInterval: retryReadWriteMessageIntervalDefault,
+		pingInterval:                  pingIntervalDefault,
+		connectionHealthThreshold:     connectionHealthTickerDurationDefault,
 		writerWg:                      &sync.WaitGroup{},
 		readerWg:                      &sync.WaitGroup{},
 		reconnectingWg:                &sync.WaitGroup{},
@@ -132,6 +137,9 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 }
 
 func (p *Peer) start() {
+
+	p.logger.Info("Starting peer")
+
 	ctx, cancelAll := context.WithCancel(context.Background())
 	p.cancelAll = cancelAll
 	p.ctx = ctx
@@ -788,15 +796,15 @@ func (p *Peer) versionMessage(address string) *wire.MsgVersion {
 func (p *Peer) startMonitorPingPong() {
 	p.healthMonitorWg.Add(1)
 
-	pingTicker := time.NewTicker(pingInterval)
+	pingTicker := time.NewTicker(p.pingInterval)
 
 	go func() {
 		// if no ping/pong signal is received for certain amount of time, mark peer as unhealthy
-		checkConnectionHealthTicker := time.NewTicker(connectionHealthTickerDuration)
+		monitorConnectionTicker := time.NewTicker(p.connectionHealthThreshold)
 
 		defer func() {
 			p.healthMonitorWg.Done()
-			checkConnectionHealthTicker.Stop()
+			monitorConnectionTicker.Stop()
 		}()
 
 		for {
@@ -809,18 +817,19 @@ func (p *Peer) startMonitorPingPong() {
 				}
 				p.writeChan <- wire.NewMsgPing(nonce)
 			case <-p.pingPongAlive:
-				p.mu.Lock()
-				p.isHealthy = true
-				p.mu.Unlock()
+				// if ping/pong signal is received reset the ticker
+				monitorConnectionTicker.Reset(p.connectionHealthThreshold)
+				p.setHealthy()
+			case <-monitorConnectionTicker.C:
 
-				// if ping/pong is received signal reset the ticker
-				checkConnectionHealthTicker.Reset(connectionHealthTickerDuration)
-			case <-checkConnectionHealthTicker.C:
+				p.isHealthy.Store(false)
 
-				p.mu.Lock()
-				p.isHealthy = false
+				select {
+				case p.isUnhealthyCh <- struct{}{}:
+				default: // Do not block if nothing is ready from channel
+				}
+
 				p.logger.Warn("peer unhealthy")
-				p.mu.Unlock()
 			case <-p.ctx.Done():
 				return
 			}
@@ -828,31 +837,22 @@ func (p *Peer) startMonitorPingPong() {
 	}()
 }
 
+func (p *Peer) IsUnhealthyCh() <-chan struct{} {
+	return p.isUnhealthyCh
+}
+
+func (p *Peer) setHealthy() {
+
+	if p.isHealthy.Load() {
+		return
+	}
+
+	p.logger.Info("peer healthy")
+	p.isHealthy.Store(true)
+}
+
 func (p *Peer) IsHealthy() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	return p.isHealthy
-}
-
-func (p *Peer) stopReadHandler() {
-	if p.cancelReadHandler == nil {
-		return
-	}
-	p.logger.Debug("Cancelling read handlers")
-	p.cancelReadHandler()
-	p.logger.Debug("Waiting for read handlers to stop")
-	p.readerWg.Wait()
-}
-
-func (p *Peer) stopWriteHandler() {
-	if p.cancelWriteHandler == nil {
-		return
-	}
-	p.logger.Debug("Cancelling write handlers")
-	p.cancelWriteHandler()
-	p.logger.Debug("Waiting for writer handlers to stop")
-	p.writerWg.Wait()
+	return p.isHealthy.Load()
 }
 
 func (p *Peer) Restart() {
@@ -862,10 +862,14 @@ func (p *Peer) Restart() {
 }
 
 func (p *Peer) Shutdown() {
+	p.logger.Info("Shutting down")
+
 	p.cancelAll()
 
 	p.reconnectingWg.Wait()
 	p.healthMonitorWg.Wait()
 	p.writerWg.Wait()
 	p.readerWg.Wait()
+
+	p.logger.Info("Shutdown complete")
 }

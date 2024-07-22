@@ -333,10 +333,10 @@ func TestReconnect(t *testing.T) {
 
 			if tc.cancelRead {
 				// cancel reader so that writer will disconnect
-				peer.stopReadHandler()
+				stopReadHandler(peer)
 			} else {
 				// cancel writer so that reader will disconnect
-				peer.stopWriteHandler()
+				stopWriteHandler(peer)
 			}
 
 			// break connection
@@ -636,4 +636,24 @@ func doHandshake(t *testing.T, p *Peer, myConn net.Conn) {
 	assert.NotEqual(t, 0, n)
 	assert.NoError(t, err)
 	assert.Equal(t, wire.CmdVerAck, msg.Command())
+}
+
+func stopReadHandler(p *Peer) {
+	if p.cancelReadHandler == nil {
+		return
+	}
+	p.logger.Debug("Cancelling read handlers")
+	p.cancelReadHandler()
+	p.logger.Debug("Waiting for read handlers to stop")
+	p.readerWg.Wait()
+}
+
+func stopWriteHandler(p *Peer) {
+	if p.cancelWriteHandler == nil {
+		return
+	}
+	p.logger.Debug("Cancelling write handlers")
+	p.cancelWriteHandler()
+	p.logger.Debug("Waiting for writer handlers to stop")
+	p.writerWg.Wait()
 }

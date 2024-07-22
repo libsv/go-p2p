@@ -19,3 +19,7 @@ lint:
 .PHONY: install
 install:
 	go install honnef.co/go/tools/cmd/staticcheck@latest
+
+.PHONY: gen_go
+gen_go:
+	go generate ./...

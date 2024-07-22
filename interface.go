@@ -29,6 +29,7 @@ type PeerI interface {
 	RequestBlock(blockHash *chainhash.Hash)
 	Network() wire.BitcoinNet
 	IsHealthy() bool
+	IsUnhealthyCh() <-chan struct{}
 	Shutdown()
 	Restart()
 }

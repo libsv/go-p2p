@@ -148,22 +148,12 @@ func TestNewPeer(t *testing.T) {
 		t.Log("shutdown finished")
 	})
 
-	t.Run("announce transaction", func(t *testing.T) {
+	t.Run("restart", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-		pm := p2p.NewPeerManager(logger, wire.TestNet)
-		require.NotNil(t, pm)
+		peerHandler := p2p.NewMockPeerHandler()
 
-		peerHandler := &p2p.PeerHandlerIMock{
-			HandleTransactionsGetFunc: func(msgs []*wire.InvVect, peer p2p.PeerI) ([][]byte, error) {
-				return [][]byte{TX1RawBytes}, nil
-			},
-		}
-
-		peer, err := p2p.NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet)
-		require.NoError(t, err)
-
-		err = pm.AddPeer(peer)
+		peer, err := p2p.NewPeer(logger, "localhost:"+p2pPortBinding, peerHandler, wire.TestNet, p2p.WithUserAgent("agent", "0.0.1"))
 		require.NoError(t, err)
 
 		t.Log("expect that peer has connected")
@@ -175,14 +165,30 @@ func TestNewPeer(t *testing.T) {
 					break connectLoop
 				}
 			case <-time.NewTimer(5 * time.Second).C:
-				t.Fatal("peer did not disconnect")
+				t.Fatal("peer did not connect")
 			}
 		}
 
-		pm.AnnounceTransaction(TX1Hash, []p2p.PeerI{peer})
+		t.Log("restart peer")
+		peer.Restart()
 
-		time.Sleep(100 * time.Millisecond)
+		t.Log("expect that peer has re-established connection")
+	reconnectLoop:
+		for {
+			select {
+			case <-time.NewTicker(200 * time.Millisecond).C:
+				if peer.Connected() {
+					break reconnectLoop
+				}
+			case <-time.NewTimer(2 * time.Second).C:
+				t.Fatal("peer did not reconnect")
+			}
+		}
 
+		require.NoError(t, err)
+
+		t.Log("shutdown")
 		peer.Shutdown()
+		t.Log("shutdown finished")
 	})
 }
