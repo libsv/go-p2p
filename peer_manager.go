@@ -52,10 +52,6 @@ func NewPeerManager(logger *slog.Logger, network wire.BitcoinNet, options ...Pee
 	logger.Info("Excessive block size set to", slog.Int64("block size", pm.ebs))
 	wire.SetLimits(uint64(pm.ebs))
 
-	if pm.restartUnhealthyPeers {
-		pm.StartMonitorPeerHealth()
-	}
-
 	return pm
 }
 
@@ -68,6 +64,10 @@ func (pm *PeerManager) AddPeer(peer PeerI) error {
 	}
 
 	pm.peers = append(pm.peers, peer)
+
+	if pm.restartUnhealthyPeers {
+		pm.startMonitorPeerHealth(peer)
+	}
 
 	return nil
 }
@@ -95,23 +95,22 @@ func (pm *PeerManager) Shutdown() {
 	}
 }
 
-func (pm *PeerManager) StartMonitorPeerHealth() {
+func (pm *PeerManager) startMonitorPeerHealth(peer PeerI) {
+	pm.logger.Info("Starting peer health monitoring")
 
-	for _, peer := range pm.peers {
-		pm.waitGroup.Add(1)
-		go func(p PeerI) {
-			defer pm.waitGroup.Done()
-			for {
-				select {
-				case <-pm.ctx.Done():
-					return
-				case <-p.IsUnhealthyCh():
-					pm.logger.Warn("peer unhealthy - restarting", slog.String("address", p.String()), slog.Bool("connected", p.Connected()))
-					p.Restart()
-				}
+	pm.waitGroup.Add(1)
+	go func(p PeerI) {
+		defer pm.waitGroup.Done()
+		for {
+			select {
+			case <-pm.ctx.Done():
+				return
+			case <-p.IsUnhealthyCh():
+				pm.logger.Warn("peer unhealthy - restarting", slog.String("address", p.String()), slog.Bool("connected", p.Connected()))
+				p.Restart()
 			}
-		}(peer)
-	}
+		}
+	}(peer)
 }
 
 // AnnounceTransaction will send an INV message to the provided peers or to selected peers if peers is nil

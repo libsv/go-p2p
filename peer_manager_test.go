@@ -124,3 +124,45 @@ func TestAnnounceNewTransaction(t *testing.T) {
 		assert.GreaterOrEqual(t, peersMessaged, len(peers)/2)
 	})
 }
+
+func TestMonitorPeerHealth(t *testing.T) {
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	tt := []struct {
+		name                  string
+		restartUnhealthyPeers bool
+	}{
+		{
+			name:                  "restart unhealthy peers",
+			restartUnhealthyPeers: true,
+		},
+		{
+			name:                  "do not restart unhealthy peers",
+			restartUnhealthyPeers: false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var opts []PeerManagerOptions
+
+			if tc.restartUnhealthyPeers {
+				opts = append(opts, WithRestartUnhealthyPeers())
+			}
+
+			pm := NewPeerManager(logger, wire.TestNet, opts...)
+			require.NotNil(t, pm)
+
+			peerHandler := NewMockPeerHandler()
+
+			peer, err := NewPeer(logger, "localhost:18333", peerHandler, wire.TestNet, WithPingInterval(100*time.Millisecond, 200*time.Millisecond))
+			require.NoError(t, err)
+
+			err = pm.AddPeer(peer)
+			require.NoError(t, err)
+			assert.Len(t, pm.GetPeers(), 1)
+			time.Sleep(1 * time.Second)
+			pm.Shutdown()
+		})
+	}
+}

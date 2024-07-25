@@ -826,7 +826,7 @@ func (p *Peer) startMonitorPingPong() {
 
 				select {
 				case p.isUnhealthyCh <- struct{}{}:
-				default: // Do not block if nothing is ready from channel
+				default: // Do not block if nothing is reading from channel
 				}
 
 				p.logger.Warn("peer unhealthy")
