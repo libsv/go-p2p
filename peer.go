@@ -137,7 +137,6 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 }
 
 func (p *Peer) start() {
-
 	p.logger.Info("Starting peer")
 
 	ctx, cancelAll := context.WithCancel(context.Background())
@@ -451,7 +450,9 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 
 				case wire.CmdPing:
 					commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPing)))
-					p.pingPongAlive <- struct{}{}
+					go func() {
+						p.pingPongAlive <- struct{}{}
+					}()
 
 					pingMsg, ok := msg.(*wire.MsgPing)
 					if !ok {
@@ -473,11 +474,11 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 							switch invVect.Type {
 							case wire.InvTypeTx:
 								if err = p.peerHandler.HandleTransactionAnnouncement(invVect, p); err != nil {
-									commandLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
+									routineLogger.Error("Unable to process tx", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 								}
 							case wire.InvTypeBlock:
 								if err = p.peerHandler.HandleBlockAnnouncement(invVect, p); err != nil {
-									commandLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
+									routineLogger.Error("Unable to process block", slog.String(hashKey, invVect.Hash.String()), slog.String(typeKey, invVect.Type.String()), slog.String(errKey, err.Error()))
 								}
 							}
 						}
@@ -491,7 +492,7 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 					for _, inv := range dataMsg.InvList {
 						commandLogger.Debug(receivedMsg, slog.String(hashKey, inv.Hash.String()), slog.String(typeKey, inv.Type.String()))
 					}
-					p.handleGetDataMsg(dataMsg, commandLogger)
+					go p.handleGetDataMsg(dataMsg, commandLogger)
 
 				case wire.CmdTx:
 					txMsg, ok := msg.(*wire.MsgTx)
@@ -499,19 +500,25 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 						continue
 					}
 					commandLogger.Debug(receivedMsg, slog.String(hashKey, txMsg.TxHash().String()), slog.Int("size", txMsg.SerializeSize()))
-					if err = p.peerHandler.HandleTransaction(txMsg, p); err != nil {
-						commandLogger.Error("Unable to process tx", slog.String(hashKey, txMsg.TxHash().String()), slog.String(errKey, err.Error()))
-					}
+
+					go func(txMsg *wire.MsgTx, commandLogger *slog.Logger) {
+						if err = p.peerHandler.HandleTransaction(txMsg, p); err != nil {
+							commandLogger.Error("Unable to process tx", slog.String(hashKey, txMsg.TxHash().String()), slog.String(errKey, err.Error()))
+						}
+					}(txMsg, commandLogger)
 
 				case wire.CmdBlock:
 					msgBlock, ok := msg.(*wire.MsgBlock)
 					if ok {
 						commandLogger.Info(receivedMsg, slog.String(hashKey, msgBlock.Header.BlockHash().String()))
 
-						err = p.peerHandler.HandleBlock(msgBlock, p)
-						if err != nil {
-							commandLogger.Error("Unable to process block", slog.String(hashKey, msgBlock.Header.BlockHash().String()), slog.String(errKey, err.Error()))
-						}
+						go func(msgBlock *wire.MsgBlock, commandLogger *slog.Logger) {
+							err = p.peerHandler.HandleBlock(msgBlock, p)
+							if err != nil {
+								commandLogger.Error("Unable to process block", slog.String(hashKey, msgBlock.Header.BlockHash().String()), slog.String(errKey, err.Error()))
+							}
+						}(msgBlock, commandLogger)
+
 						continue
 					}
 
@@ -519,28 +526,37 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 					blockMsg, ok := msg.(*BlockMessage)
 					if !ok {
 						commandLogger.Error("Unable to cast block message, calling with generic wire.Message")
-						err = p.peerHandler.HandleBlock(msg, p)
-						if err != nil {
-							commandLogger.Error("Unable to process block message", slog.String(errKey, err.Error()))
-						}
+
+						go func(msg *BlockMessage, commandLogger *slog.Logger) {
+							err = p.peerHandler.HandleBlock(msg, p)
+							if err != nil {
+								commandLogger.Error("Unable to process block message", slog.String(errKey, err.Error()))
+							}
+						}(blockMsg, commandLogger)
+
 						continue
 					}
 
 					commandLogger.Info(receivedMsg, slog.String(hashKey, blockMsg.Header.BlockHash().String()))
 
-					err = p.peerHandler.HandleBlock(blockMsg, p)
-					if err != nil {
-						commandLogger.Error("Unable to process block", slog.String(hashKey, blockMsg.Header.BlockHash().String()), slog.String(errKey, err.Error()))
-					}
+					go func(blockMsg *BlockMessage, commandLogger *slog.Logger) {
+						err = p.peerHandler.HandleBlock(blockMsg, p)
+						if err != nil {
+							commandLogger.Error("Unable to process block", slog.String(hashKey, blockMsg.Header.BlockHash().String()), slog.String(errKey, err.Error()))
+						}
+					}(blockMsg, commandLogger)
 
 				case wire.CmdReject:
 					rejMsg, ok := msg.(*wire.MsgReject)
 					if !ok {
 						continue
 					}
-					if err = p.peerHandler.HandleTransactionRejection(rejMsg, p); err != nil {
-						commandLogger.Error("Unable to process block", slog.String(hashKey, rejMsg.Hash.String()), slog.String(errKey, err.Error()))
-					}
+
+					go func(rejMsg *wire.MsgReject, commandLogger *slog.Logger) {
+						if err = p.peerHandler.HandleTransactionRejection(rejMsg, p); err != nil {
+							commandLogger.Error("Unable to process block", slog.String(hashKey, rejMsg.Hash.String()), slog.String(errKey, err.Error()))
+						}
+					}(rejMsg, commandLogger)
 
 				case wire.CmdVerAck:
 					commandLogger.Debug(receivedMsg)
@@ -548,7 +564,9 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 
 				case wire.CmdPong:
 					commandLogger.Debug(receivedMsg, slog.String(commandKey, strings.ToUpper(wire.CmdPong)))
-					p.pingPongAlive <- struct{}{}
+					go func() {
+						p.pingPongAlive <- struct{}{}
+					}()
 
 				default:
 					commandLogger.Debug("command ignored")
@@ -842,7 +860,6 @@ func (p *Peer) IsUnhealthyCh() <-chan struct{} {
 }
 
 func (p *Peer) setHealthy() {
-
 	if p.isHealthy.Load() {
 		return
 	}
