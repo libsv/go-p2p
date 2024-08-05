@@ -422,10 +422,7 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 					p.logger.Error("Retrying to read failed", slog.String(errKey, err.Error()))
 
 					// stop all read and write handlers
-					p.cancelWriteHandler()
-					p.cancelReadHandler()
-
-					p.disconnectLock()
+					p.Restart()
 
 					return
 				}
@@ -719,10 +716,7 @@ func (p *Peer) startWriteChannelHandler(ctx context.Context, instance int) {
 					p.logger.Error("Failed retrying to write message", slog.Int("instance", instance), slog.String(errKey, err.Error()))
 
 					// stop all read and write handlers
-					p.cancelWriteHandler()
-					p.cancelReadHandler()
-
-					p.disconnectLock()
+					p.Restart()
 
 					return
 				}
@@ -856,9 +850,15 @@ func (p *Peer) IsHealthy() bool {
 }
 
 func (p *Peer) Restart() {
-	p.Shutdown()
+	if p.cancelWriteHandler != nil {
+		p.cancelWriteHandler()
+	}
 
-	p.start()
+	if p.cancelReadHandler != nil {
+		p.cancelReadHandler()
+	}
+
+	p.disconnectLock()
 }
 
 func (p *Peer) Shutdown() {
