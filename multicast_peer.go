@@ -184,12 +184,12 @@ func (p *McastPeer) connect() {
 		}
 
 		p.mcastConnections[mg.MsgType] = lc
-		go p.receiveMessage(lc)
+		p.receiveMessage(lc)
 	}
 
 	// run message writers
 	for i := uint8(0); i < p.nWriters; i++ {
-		go p.sendMessages(i)
+		p.sendMessages(i)
 	}
 
 	p.connected.Store(true)
