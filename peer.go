@@ -16,11 +16,10 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+
 	"github.com/libsv/go-p2p/bsvutil"
 	"github.com/libsv/go-p2p/chaincfg/chainhash"
 	"github.com/libsv/go-p2p/wire"
-	"github.com/ordishs/go-utils"
-	"github.com/ordishs/go-utils/batcher"
 )
 
 const (
@@ -68,8 +67,8 @@ type Peer struct {
 	sentVerAck                    atomic.Bool
 	receivedVerAck                atomic.Bool
 	batchDelay                    time.Duration
-	invBatcher                    *batcher.Batcher[chainhash.Hash]
-	dataBatcher                   *batcher.Batcher[chainhash.Hash]
+	invBatchProcessor             *BatchProcessor
+	dataBatchProcessor            *BatchProcessor
 	maximumMessageSize            int64
 	isHealthy                     atomic.Bool
 	userAgentName                 *string
@@ -130,6 +129,17 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 			return nil, fmt.Errorf("failed to apply option, %v", err)
 		}
 	}
+	invBatchProcessor, err := NewBatchProcessor(500, p.batchDelay, p.sendInvBatch, 10000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create inv batch processor, %v", err)
+	}
+	p.invBatchProcessor = invBatchProcessor
+
+	dataBatchProcessor, err := NewBatchProcessor(500, p.batchDelay, p.sendDataBatch, 10000)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create data batch processor, %v", err)
+	}
+	p.dataBatchProcessor = dataBatchProcessor
 
 	p.start()
 
@@ -145,9 +155,6 @@ func (p *Peer) start() {
 	p.ctx = ctx
 
 	p.startMonitorPingPong()
-
-	p.invBatcher = batcher.New(500, p.batchDelay, p.sendInvBatch, true)
-	p.dataBatcher = batcher.New(500, p.batchDelay, p.sendDataBatch, true)
 
 	if p.incomingConn != nil {
 		go func() {
@@ -304,7 +311,8 @@ func (p *Peer) Connecting() bool {
 }
 
 func (p *Peer) WriteMsg(msg wire.Message) error {
-	utils.SafeSend(p.writeChan, msg)
+	p.writeChan <- msg
+
 	return nil
 }
 
@@ -601,11 +609,11 @@ func (p *Peer) handleGetDataMsg(dataMsg *wire.MsgGetData, logger *slog.Logger) {
 }
 
 func (p *Peer) AnnounceTransaction(hash *chainhash.Hash) {
-	p.invBatcher.Put(hash)
+	p.invBatchProcessor.Put(hash)
 }
 
 func (p *Peer) RequestTransaction(hash *chainhash.Hash) {
-	p.dataBatcher.Put(hash)
+	p.dataBatchProcessor.Put(hash)
 }
 
 func (p *Peer) AnnounceBlock(blockHash *chainhash.Hash) {
@@ -870,6 +878,9 @@ func (p *Peer) Shutdown() {
 	p.healthMonitorWg.Wait()
 	p.writerWg.Wait()
 	p.readerWg.Wait()
+
+	p.invBatchProcessor.Shutdown()
+	p.dataBatchProcessor.Shutdown()
 
 	p.logger.Info("Shutdown complete")
 }

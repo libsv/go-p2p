@@ -6,7 +6,6 @@ require (
 	github.com/cbeuw/connutil v0.0.0-20200411215123-966bfaa51ee3
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/davecgh/go-spew v1.1.1
-	github.com/ordishs/go-utils v1.0.24
 	github.com/ory/dockertest/v3 v3.10.0
 	github.com/stretchr/testify v1.8.1
 )
