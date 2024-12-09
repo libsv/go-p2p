@@ -110,6 +110,8 @@ type Message interface {
 	MaxPayloadLength(uint32) uint64
 }
 
+var ErrUnhandledCmdReceived = errors.New("unhandled command")
+
 // makeEmptyMessage creates a message of the appropriate concrete type based
 // on the command.
 func makeEmptyMessage(command string) (Message, error) {
@@ -218,7 +220,7 @@ func makeEmptyMessage(command string) (Message, error) {
 		msg = &MsgSendcmpct{}
 
 	default:
-		return nil, fmt.Errorf("unhandled command [%s]: %#v", command, msg)
+		return nil, fmt.Errorf("%w [%s]", ErrUnhandledCmdReceived, command)
 	}
 	return msg, nil
 }
