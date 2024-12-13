@@ -72,3 +72,10 @@ func WithPingInterval(pingInterval time.Duration, connectionHealthThreshold time
 		return nil
 	}
 }
+
+func WithReadBufferSize(size int) PeerOptions {
+	return func(p *Peer) error {
+		p.buffSize = size
+		return nil
+	}
+}
