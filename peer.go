@@ -89,6 +89,8 @@ type Peer struct {
 	writerWg        *sync.WaitGroup
 	reconnectingWg  *sync.WaitGroup
 	healthMonitorWg *sync.WaitGroup
+
+	buffSize int
 }
 
 // NewPeer returns a new bitcoin peer for the provided address and configuration.
@@ -121,6 +123,7 @@ func NewPeer(logger *slog.Logger, address string, peerHandler PeerHandlerI, netw
 		readerWg:                      &sync.WaitGroup{},
 		reconnectingWg:                &sync.WaitGroup{},
 		healthMonitorWg:               &sync.WaitGroup{},
+		buffSize:                      4096,
 	}
 
 	var err error
@@ -405,7 +408,7 @@ func (p *Peer) startReadHandler(ctx context.Context) {
 			return
 		}
 
-		reader := bufio.NewReader(&io.LimitedReader{R: readConn, N: p.maximumMessageSize})
+		reader := bufio.NewReaderSize(&io.LimitedReader{R: readConn, N: p.maximumMessageSize}, p.buffSize)
 		for {
 			select {
 			case <-ctx.Done():
